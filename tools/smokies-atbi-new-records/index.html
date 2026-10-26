@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smokies ATBI New Records · random-iNat-tools</title>
+<meta name="description" content="Dashboard of iNaturalist observations flagged as new taxonomic records for the All Taxa Biodiversity Inventory of Great Smoky Mountains National Park.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --bg-alt: #f3f5f1;
+    --text: #1f2421;
+    --text-muted: #5d6660;
+    --border: #d6dcd4;
+    --accent: #5a8a00;
+    --accent-text: #ffffff;
+    --bar: #5a8a00;
+    --link: #2f6f9f;
+    --error: #b3261e;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141714;
+      --bg-alt: #1e221e;
+      --text: #e3e7e2;
+      --text-muted: #9aa49c;
+      --border: #39403a;
+      --accent: #8cc63f;
+      --accent-text: #141714;
+      --bar: #6f9f2a;
+      --link: #7fb8e6;
+      --error: #f2867f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    max-width: 72rem;
+    padding: 1rem 1rem 3rem;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 var(--font);
+  }
+  a { color: var(--link); }
+  h1 { margin: 0.5rem 0 0.25rem; font-size: 1.6rem; }
+  h2 { margin: 2.5rem 0 0.5rem; font-size: 1.25rem; }
+  h3 { margin: 1.5rem 0 0.4rem; font-size: 1.05rem; }
+  .lede { margin: 0 0 1.25rem; color: var(--text-muted); max-width: 48rem; }
+  .note { margin: 0.25rem 0 0.75rem; color: var(--text-muted); font-size: 0.9rem; max-width: 48rem; }
+
+  button {
+    padding: 0.45rem 1.1rem;
+    font: inherit;
+    font-weight: 600;
+    color: var(--accent-text);
+    background: var(--accent);
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button.secondary {
+    color: var(--text);
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    font-weight: 500;
+  }
+
+  #status { min-height: 1.5em; margin: 1rem 0; color: var(--text-muted); }
+  #status.error { color: var(--error); }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { font-weight: 600; }
+  thead th { position: sticky; top: 0; background: var(--bg-alt); }
+  tfoot th, tfoot td { font-weight: 600; border-bottom: 0; }
+  td.num, th.num { text-align: right; }
+  .zero { color: var(--text-muted); }
+
+  /* Summary tiles */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 0.75rem;
+  }
+  .tile {
+    padding: 0.9rem 1rem;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .tile-label { margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+  .tile-value { margin: 0.1rem 0 0.2rem; font-size: 2.2rem; font-weight: 600; line-height: 1.2; }
+  .tile-link { margin: 0; font-size: 0.85rem; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
+
+  .rank-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0 2rem; align-items: start; }
+
+  /* Horizontal bar lists */
+  .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0 2rem; }
+  .bars { display: grid; gap: 0.3rem; }
+  .bar-row {
+    display: grid;
+    grid-template-columns: minmax(6rem, 10rem) 1fr 3.5rem;
+    gap: 0.6rem;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .bar-label { overflow-wrap: anywhere; }
+  .bar-track { display: block; height: 16px; }
+  .bar { display: block; height: 100%; min-width: 2px; background: var(--bar); border-radius: 0 4px 4px 0; }
+  .bar-row:hover .bar { filter: brightness(1.15); }
+  .bar-value { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Observers and observations */
+  .person { display: flex; align-items: center; gap: 0.5rem; }
+  .person a { min-width: 0; }
+  .login { overflow-wrap: anywhere; }
+  @media (max-width: 30rem) {
+    th, td { padding: 0.4rem 0.35rem; }
+    .person .avatar { display: none; }
+    .person .login { display: block; }
+  }
+  .avatar {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bg-alt);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .login { color: var(--text-muted); font-size: 0.85rem; }
+  .thumb { width: 64px; }
+  .thumb img { display: block; width: 48px; height: 48px; object-fit: cover; border-radius: 4px; background: var(--bg-alt); }
+  .common { display: block; color: var(--text-muted); font-size: 0.85rem; }
+  tr.extra { display: none; }
+  table.show-all tr.extra { display: table-row; }
+  .section-head { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: baseline; justify-content: space-between; }
+  .section-head h3 { margin-bottom: 0; }
+
+  ol.workflow { padding-left: 1.4rem; max-width: 48rem; }
+  ol.workflow li { margin-bottom: 0.5rem; }
+  code { font-size: 0.9em; padding: 0 0.2em; background: var(--bg-alt); border-radius: 3px; }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Smokies ATBI new records from iNaturalist</h1>
+  <p class="lede">
+    Tracks iNaturalist observations that document taxa new to the checklists of
+    Great Smoky Mountains National Park's All Taxa Biodiversity Inventory (ATBI). Observations are tagged and
+    tracked with the observation field
+    <a href="https://www.inaturalist.org/observation_fields/14382">New Smokies ATBI record?</a>.
+    Counts include observations inside the park (iNaturalist place
+    <a href="https://www.inaturalist.org/places/72645">72645</a>); select any number to see those observations on iNaturalist.
+  </p>
+</header>
+
+<main>
+  <p id="status" role="status" aria-live="polite">Loading…</p>
+  <noscript><p>This dashboard needs JavaScript to load data from iNaturalist.</p></noscript>
+
+  <div id="dashboard" hidden>
+    <section aria-label="Summary">
+      <div class="tiles" id="tiles"></div>
+      <div class="toolbar">
+        <button type="button" class="secondary" id="download-all">Download all records (CSV)</button>
+      </div>
+    </section>
+
+    <section id="by-rank">
+      <h2>Records by rank</h2>
+      <p class="note">Each row is the highest rank the observation adds to the park's checklists. For example, a new species in a genus the park already has counts as a species record.</p>
+      <div class="rank-tables">
+        <div class="table-wrap"><table id="rank-table"></table></div>
+        <div class="table-wrap"><table id="other-values-table"></table></div>
+      </div>
+    </section>
+
+    <div class="two-col">
+      <section id="by-group">
+        <h2>Confirmed records by group</h2>
+        <div class="bars" id="group-bars"></div>
+      </section>
+      <section id="by-year">
+        <h2>Confirmed records by year observed</h2>
+        <div class="bars" id="year-bars"></div>
+      </section>
+    </div>
+
+    <section id="observers">
+      <h2>Top observers</h2>
+      <p class="note">People whose observations became confirmed new records for the park. "In progress" counts their observations still awaiting ID or park confirmation.</p>
+      <div class="table-wrap"><table id="observers-table"></table></div>
+      <div class="toolbar"><button type="button" class="secondary" id="show-all-observers" hidden></button></div>
+    </section>
+
+    <section id="in-progress">
+      <h2>In progress</h2>
+      <div class="section-head">
+        <h3 id="pending-heading">Awaiting park confirmation</h3>
+        <button type="button" class="secondary" id="download-pending">Download list for park review (CSV)</button>
+      </div>
+      <p class="note">The ID is settled and the taxon isn't on the park's checklists. These are waiting for park staff to confirm.</p>
+      <div class="table-wrap"><table id="pending-table"></table></div>
+
+      <h3 id="candidate-heading">Awaiting ID confirmation</h3>
+      <p class="note">Likely new records that are still waiting on help with the identification.</p>
+      <div class="table-wrap"><table id="candidate-table"></table></div>
+    </section>
+
+    <section id="attention">
+      <h2>Needs attention</h2>
+      <p class="note">Automatic checks for flagged observations that may need a second look.</p>
+      <div id="attention-list"></div>
+    </section>
+  </div>
+
+  <section id="about">
+    <h2>How the workflow works</h2>
+    <ol class="workflow">
+      <li><strong>Watch.</strong> We look for verifiable iNaturalist observations from inside the park of interesting or unusual taxa that may be new to the park.</li>
+      <li><strong>Check the ID.</strong> Do the photos or sounds support an identification at that rank? We verify it ourselves or ask experts to weigh in. While we wait for that help, the observation is marked <code>awaiting ID confirmation</code>.</li>
+      <li><strong>Check the checklists.</strong> Once the ID is solid, we compare the taxon and its synonyms against the park's species checklists. If it's missing, the observation is marked with the highest rank it would add, like <code>species (confirming)</code> when the park already has the genus but not the species.</li>
+      <li><strong>Park confirmation.</strong> Park staff double-check the observation and search the park's checklists and collections databases. If they agree it's new, they add it to the park checklist and the value changes to the plain rank (<code>species</code>), with a comment on the observation noting the new record. If a record is later re-identified as something already known, the field is removed and a comment explains why.</li>
+    </ol>
+  </section>
+</main>
+
+<footer>
+  Part of <a href="https://github.com/willkuhn/random-iNat-tools">random-iNat-tools</a>
+  (<a href="https://github.com/willkuhn/random-iNat-tools/tree/main/tools/smokies-atbi-new-records">docs &amp; source</a>).
+  Data from the <a href="https://api.inaturalist.org/v2/docs/">iNaturalist API</a>; observations and media belong to their creators.
+  Not affiliated with or endorsed by iNaturalist or the National Park Service.
+</footer>
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// iNaturalist API client
+// Follows https://www.inaturalist.org/pages/api+recommended+practices:
+// about 1 request per second, back off on HTTP 429, largest page size,
+// and no paging past the 10,000-result ceiling.
+// Keep this block identical across tools so fixes can be copied between them.
+// ---------------------------------------------------------------------------
+const INAT_API = 'https://api.inaturalist.org';
+const MIN_REQUEST_INTERVAL_MS = 1000;
+const RATE_LIMIT_BACKOFF_MS = 10000;
+const MAX_RETRIES = 3;
+const MAX_PER_PAGE = 200;
+const MAX_RESULTS = 10000;
+// Most records the API returns for a comma-separated ID lookup like /v1/taxa/1,2,3 (from the v1 API docs).
+const MAX_IDS_PER_REQUEST = { '/v1/identifications': 30, '/v1/observations': 200, '/v1/places': 500, '/v1/projects': 100, '/v1/taxa': 30 };
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Slots are reserved synchronously, so requests fired concurrently still go out one per interval.
+let nextRequestAt = 0;
+function waitForRequestSlot() {
+  const now = Date.now();
+  const slot = Math.max(now, nextRequestAt);
+  nextRequestAt = slot + MIN_REQUEST_INTERVAL_MS;
+  return sleep(slot - now);
+}
+
+// GET an API path, e.g. inatFetch('/v1/observations', {taxon_id: 47157, per_page: 0}).
+// Params set to undefined or null are left out; an empty string is sent (e.g. `field:Name=` matches any value).
+async function inatFetch(path, params = {}) {
+  const url = new URL(INAT_API + path);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) url.searchParams.set(key, value);
+  }
+  for (let attempt = 0; ; attempt++) {
+    await waitForRequestSlot();
+    const response = await fetch(url);
+    if (response.status === 429 && attempt < MAX_RETRIES) {
+      // Pause every queued request, not just this one, and wait longer on each retry.
+      const backoff = RATE_LIMIT_BACKOFF_MS * 2 ** attempt;
+      nextRequestAt = Math.max(nextRequestAt, Date.now() + backoff);
+      setStatus(`iNaturalist asked us to slow down. Retrying in ${backoff / 1000} seconds…`);
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(`iNaturalist API returned ${response.status} ${response.statusText} for ${url.pathname}`);
+    }
+    return response.json();
+  }
+}
+
+// Fetch every result of a search by walking id_above, as iNat recommends instead of deep paging.
+// Only for endpoints that accept id_above and order_by=id: /v1/observations, /v1/identifications, /v1/taxa, /v2/observations.
+// Refuses searches over MAX_RESULTS so users narrow their filters or use an export instead.
+async function inatFetchAll(path, params = {}, onProgress = () => {}) {
+  const results = [];
+  let idAbove;
+  let total;
+  for (;;) {
+    const data = await inatFetch(path, { ...params, per_page: MAX_PER_PAGE, order_by: 'id', order: 'asc', id_above: idAbove });
+    if (total === undefined) {
+      total = data.total_results;
+      if (total > MAX_RESULTS) {
+        throw new Error(`This search matches ${formatNumber(total)} records, more than the ${formatNumber(MAX_RESULTS)} this tool will fetch. ` +
+          'Add filters to narrow it down, or use iNaturalist\'s observation export (https://www.inaturalist.org/observations/export) for large datasets.');
+      }
+    }
+    results.push(...data.results);
+    onProgress(results.length, total);
+    if (data.results.length < MAX_PER_PAGE) return results;
+    idAbove = data.results[data.results.length - 1].id;
+  }
+}
+
+// Look up records by ID in as few requests as possible, e.g. inatFetchByIds('/v1/taxa', [1, 2, 3]).
+async function inatFetchByIds(path, ids, params = {}) {
+  const batchSize = MAX_IDS_PER_REQUEST[path];
+  if (!batchSize) throw new Error(`${path} doesn't support looking up several IDs at once`);
+  const unique = [...new Set(ids)];
+  const results = [];
+  for (let i = 0; i < unique.length; i += batchSize) {
+    const batch = unique.slice(i, i + batchSize);
+    const data = await inatFetch(`${path}/${batch.join(',')}`, params);
+    results.push(...data.results);
+  }
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Page helpers
+// ---------------------------------------------------------------------------
+const statusEl = document.getElementById('status');
+
+function setStatus(message, isError = false) {
+  statusEl.textContent = message;
+  statusEl.classList.toggle('error', isError);
+}
+
+const formatNumber = n => Number(n).toLocaleString();
+
+// Use for any API-provided text inserted with innerHTML (names, descriptions, etc.).
+function escapeHtml(text) {
+  return String(text ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+}
+
+// ---------------------------------------------------------------------------
+// Tool logic
+// ---------------------------------------------------------------------------
+const FIELD_ID = 14382;
+const FIELD_NAME = 'New Smokies ATBI record?';
+const PLACE_ID = 72645; // Great Smoky Mountains National Park
+// iNat's website double-encodes observation field names in search URLs; this matches the links it generates itself.
+const FIELD_WEB_PARAM = 'field:new%2Bsmokies%2Batbi%2Brecord%253F';
+// Lists of observation IDs go into links; past this many the URL gets too long to be safe.
+const MAX_IDS_IN_LINK = 400;
+const TOP_OBSERVERS_SHOWN = 20;
+
+// Ranks a new record can be claimed at, coarsest first, with iNat's rank_level for each.
+const RECORD_RANKS = [
+  ['kingdom', 70], ['phylum', 60], ['class', 50], ['order', 40], ['family', 30],
+  ['subfamily', 27], ['tribe', 25], ['genus', 20], ['species', 10], ['subspecies', 5],
+];
+const RANK_LEVEL = Object.fromEntries(RECORD_RANKS);
+
+const STAGE_LABELS = {
+  confirmed: 'Confirmed new record',
+  pending: 'Awaiting park confirmation',
+  candidate: 'Awaiting ID confirmation',
+  unknown: 'Unrecognized value',
+};
+
+const QUALITY_LABELS = { research: 'Research', needs_id: 'Needs ID', casual: 'Casual' };
+
+const ICONIC_LABELS = {
+  Insecta: 'Insects', Arachnida: 'Arachnids', Fungi: 'Fungi & lichens', Plantae: 'Plants',
+  Aves: 'Birds', Mammalia: 'Mammals', Reptilia: 'Reptiles', Amphibia: 'Amphibians',
+  Actinopterygii: 'Ray-finned fishes', Mollusca: 'Mollusks', Animalia: 'Other animals',
+  Protozoa: 'Protozoans', Chromista: 'Kelp, diatoms & allies',
+};
+
+// Only the attributes the dashboard uses (v2 API `fields`), which keeps each page of results small.
+const OBS_FIELDS = '(id:!t,observed_on:!t,quality_grade:!t,place_ids:!t,' +
+  'taxon:(id:!t,name:!t,rank:!t,rank_level:!t,preferred_common_name:!t,iconic_taxon_name:!t),' +
+  'user:(id:!t,login:!t,name:!t,icon_url:!t),ofvs:(field_id:!t,value:!t),photos:(url:!t,attribution:!t))';
+
+// Sort a field value into a workflow stage, plus the rank of the record it claims, if any.
+function classify(fieldValue) {
+  const value = fieldValue.trim().toLowerCase();
+  if (Object.hasOwn(RANK_LEVEL, value)) return { stage: 'confirmed', rank: value };
+  const pendingRank = value.match(/^(\w+) \(confirming\)$/)?.[1];
+  if (pendingRank && Object.hasOwn(RANK_LEVEL, pendingRank)) return { stage: 'pending', rank: pendingRank };
+  if (value === 'confirming') return { stage: 'pending', rank: null };
+  if (value === 'awaiting id confirmation' || value === 'possibly') return { stage: 'candidate', rank: null };
+  return { stage: 'unknown', rank: null };
+}
+
+function toRecord(obs) {
+  const value = (obs.ofvs.find(ofv => ofv.field_id === FIELD_ID)?.value ?? '').trim();
+  return {
+    id: obs.id,
+    value,
+    ...classify(value),
+    taxon: obs.taxon,
+    user: obs.user,
+    observedOn: obs.observed_on,
+    qualityGrade: obs.quality_grade,
+    inPark: (obs.place_ids ?? []).includes(PLACE_ID),
+    photo: obs.photos?.[0],
+  };
+}
+
+const capitalize = text => text.charAt(0).toUpperCase() + text.slice(1);
+const groupLabel = taxon => ICONIC_LABELS[taxon?.iconic_taxon_name] ?? 'Unknown';
+const observationUrl = id => `https://www.inaturalist.org/observations/${id}`;
+const personUrl = login => `https://www.inaturalist.org/people/${encodeURIComponent(login)}`;
+
+function fieldValueSearchUrl(value) {
+  return `https://www.inaturalist.org/observations?${FIELD_WEB_PARAM}=${encodeURIComponent(value)}&place_id=${PLACE_ID}&verifiable=any`;
+}
+
+function idListUrl(records) {
+  if (records.length === 0 || records.length > MAX_IDS_IN_LINK) return null;
+  return `https://www.inaturalist.org/observations?id=${records.map(r => r.id).join(',')}&verifiable=any`;
+}
+
+function countHtml(count, url) {
+  if (!count) return '<span class="zero">0</span>';
+  return url ? `<a href="${url}">${formatNumber(count)}</a>` : formatNumber(count);
+}
+
+function groupBy(items, keyOf) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = keyOf(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return groups;
+}
+
+function taxonHtml(taxon) {
+  if (!taxon) return '<span class="zero">No ID</span>';
+  const name = taxon.rank_level <= 20 ? `<i>${escapeHtml(taxon.name)}</i>` : escapeHtml(taxon.name);
+  const rankPrefix = taxon.rank_level > 10 ? `${escapeHtml(capitalize(taxon.rank))} ` : '';
+  const common = taxon.preferred_common_name ? `<span class="common">${escapeHtml(taxon.preferred_common_name)}</span>` : '';
+  return `<a href="https://www.inaturalist.org/taxa/${taxon.id}">${rankPrefix}${name}</a>${common}`;
+}
+
+function avatarHtml(user) {
+  if (user.icon_url) {
+    return `<img class="avatar" src="${escapeHtml(user.icon_url.replace('/medium.', '/thumb.'))}" alt="" width="32" height="32" loading="lazy">`;
+  }
+  return `<span class="avatar" aria-hidden="true">${escapeHtml(user.login.charAt(0).toUpperCase())}</span>`;
+}
+
+function personHtml(user) {
+  const label = user.name ? `${escapeHtml(user.name)} <span class="login">${escapeHtml(user.login)}</span>` : escapeHtml(user.login);
+  return `<span class="person">${avatarHtml(user)}<a href="${personUrl(user.login)}">${label}</a></span>`;
+}
+
+function photoHtml(record) {
+  const url = observationUrl(record.id);
+  if (!record.photo) return `<a href="${url}">Obs. ${record.id}</a>`;
+  return `<a href="${url}"><img src="${escapeHtml(record.photo.url)}" alt="Observation ${record.id}" title="${escapeHtml(record.photo.attribution)}" width="48" height="48" loading="lazy"></a>`;
+}
+
+// ----- Summary tiles -------------------------------------------------------
+function renderTiles(records) {
+  const byStage = groupBy(records, r => r.stage);
+  const confirmed = byStage.get('confirmed') ?? [];
+  const observerCount = new Set(confirmed.map(r => r.user.id)).size;
+  const tiles = [
+    { label: 'Confirmed new records', records: confirmed, section: '#by-rank' },
+    { label: 'Awaiting park confirmation', records: byStage.get('pending') ?? [], section: '#in-progress' },
+    { label: 'Awaiting ID confirmation', records: byStage.get('candidate') ?? [], section: '#candidate-heading' },
+  ].map(({ label, records, section }) => {
+    // Too many IDs for one link: point to the breakdown on this page instead.
+    const url = idListUrl(records);
+    const link = url ? `<a href="${url}">View on iNaturalist</a>` : `<a href="${section}">See the breakdown</a>`;
+    return `<div class="tile">
+      <p class="tile-label">${label}</p>
+      <p class="tile-value">${formatNumber(records.length)}</p>
+      <p class="tile-link">${records.length ? link : '&nbsp;'}</p>
+    </div>`;
+  });
+  tiles.push(`<div class="tile">
+    <p class="tile-label">Observers with confirmed records</p>
+    <p class="tile-value">${formatNumber(observerCount)}</p>
+    <p class="tile-link"><a href="#observers">See the leaderboard</a></p>
+  </div>`);
+  document.getElementById('tiles').innerHTML = tiles.join('');
+}
+
+// ----- Records by rank -----------------------------------------------------
+function renderRankTables(records) {
+  const countOf = value => records.filter(r => r.value.toLowerCase() === value.toLowerCase()).length;
+  const cell = value => `<td class="num">${countHtml(countOf(value), fieldValueSearchUrl(value))}</td>`;
+
+  const rows = RECORD_RANKS.map(([rank]) =>
+    `<tr><th scope="row">${capitalize(rank)}</th>${cell(rank)}${cell(`${rank} (confirming)`)}</tr>`);
+  rows.push(`<tr><th scope="row">Rank not given</th><td class="num"><span class="zero">–</span></td>${cell('confirming')}</tr>`);
+  const total = stage => records.filter(r => r.stage === stage).length;
+
+  document.getElementById('rank-table').innerHTML = `
+    <thead><tr><th scope="col">Rank</th><th scope="col" class="num">Confirmed</th><th scope="col" class="num">Awaiting park confirmation</th></tr></thead>
+    <tbody>${rows.join('')}</tbody>
+    <tfoot><tr><th scope="row">Total</th><td class="num">${formatNumber(total('confirmed'))}</td><td class="num">${formatNumber(total('pending'))}</td></tr></tfoot>`;
+
+  document.getElementById('other-values-table').innerHTML = `
+    <thead><tr><th scope="col">Other field values</th><th scope="col" class="num">Observations</th></tr></thead>
+    <tbody>
+      <tr><th scope="row"><code>awaiting ID confirmation</code></th>${cell('awaiting ID confirmation')}</tr>
+      <tr><th scope="row"><code>possibly</code></th>${cell('possibly')}</tr>
+    </tbody>`;
+}
+
+// ----- Bar lists -----------------------------------------------------------
+function renderBars(containerId, rows) {
+  const max = Math.max(1, ...rows.map(row => row.records.length));
+  document.getElementById(containerId).innerHTML = rows.map(({ label, records }) => {
+    const count = records.length;
+    return `<div class="bar-row" title="${escapeHtml(label)}: ${formatNumber(count)} confirmed new record${count === 1 ? '' : 's'}">
+      <span class="bar-label">${escapeHtml(label)}</span>
+      <span class="bar-track"><span class="bar" style="width: ${(count / max * 100).toFixed(1)}%"></span></span>
+      <span class="bar-value">${countHtml(count, idListUrl(records))}</span>
+    </div>`;
+  }).join('') || '<p class="note">No confirmed records yet.</p>';
+}
+
+function renderCharts(records) {
+  const confirmed = records.filter(r => r.stage === 'confirmed');
+  const byGroup = [...groupBy(confirmed, r => groupLabel(r.taxon))]
+    .map(([label, group]) => ({ label, records: group }))
+    .sort((a, b) => b.records.length - a.records.length || a.label.localeCompare(b.label));
+  renderBars('group-bars', byGroup);
+
+  const byYear = [...groupBy(confirmed, r => r.observedOn?.slice(0, 4) ?? 'Unknown')]
+    .map(([label, group]) => ({ label, records: group }))
+    .sort((a, b) => b.label.localeCompare(a.label));
+  renderBars('year-bars', byYear);
+}
+
+// ----- Top observers -------------------------------------------------------
+function renderObservers(records) {
+  const rows = [...groupBy(records.filter(r => r.stage !== 'unknown'), r => r.user.id).values()]
+    .map(group => ({
+      user: group[0].user,
+      confirmed: group.filter(r => r.stage === 'confirmed'),
+      inProgress: group.filter(r => r.stage !== 'confirmed'),
+    }))
+    .filter(row => row.confirmed.length > 0)
+    .sort((a, b) => b.confirmed.length - a.confirmed.length ||
+      b.inProgress.length - a.inProgress.length ||
+      a.user.login.localeCompare(b.user.login));
+
+  // Ties share a place, and the next place skips ahead (1, 2, 2, 4).
+  let place = 0;
+  const body = rows.map((row, i) => {
+    if (i === 0 || row.confirmed.length !== rows[i - 1].confirmed.length) place = i + 1;
+    return `<tr${i >= TOP_OBSERVERS_SHOWN ? ' class="extra"' : ''}>
+      <td class="num">${place}</td>
+      <td>${personHtml(row.user)}</td>
+      <td class="num">${countHtml(row.confirmed.length, idListUrl(row.confirmed))}</td>
+      <td class="num">${countHtml(row.inProgress.length, idListUrl(row.inProgress))}</td>
+    </tr>`;
+  }).join('');
+
+  const table = document.getElementById('observers-table');
+  table.innerHTML = `
+    <thead><tr><th scope="col" class="num">#</th><th scope="col">Observer</th><th scope="col" class="num">Confirmed</th><th scope="col" class="num">In progress</th></tr></thead>
+    <tbody>${body}</tbody>`;
+
+  const button = document.getElementById('show-all-observers');
+  button.hidden = rows.length <= TOP_OBSERVERS_SHOWN;
+  button.textContent = `Show all ${formatNumber(rows.length)} observers`;
+  button.onclick = () => {
+    const showingAll = table.classList.toggle('show-all');
+    button.textContent = showingAll ? `Show top ${TOP_OBSERVERS_SHOWN}` : `Show all ${formatNumber(rows.length)} observers`;
+  };
+}
+
+// ----- In-progress lists ---------------------------------------------------
+function observationRows(records, extraCell) {
+  return records.map(r => `<tr>
+    <td class="thumb">${photoHtml(r)}</td>
+    <td>${taxonHtml(r.taxon)}</td>
+    <td><code>${escapeHtml(r.value)}</code></td>
+    <td><a href="${personUrl(r.user.login)}">${escapeHtml(r.user.login)}</a></td>
+    <td>${escapeHtml(r.observedOn ?? 'Unknown')}</td>
+    <td>${escapeHtml(QUALITY_LABELS[r.qualityGrade] ?? r.qualityGrade)}</td>
+    ${extraCell ? `<td>${extraCell(r)}</td>` : ''}
+  </tr>`).join('');
+}
+
+function observationTable(records, { emptyMessage, extraHeading, extraCell }) {
+  if (records.length === 0) return `<tbody><tr><td class="zero">${emptyMessage}</td></tr></tbody>`;
+  return `<thead><tr>
+      <th scope="col">Observation</th><th scope="col">Taxon</th><th scope="col">Field value</th>
+      <th scope="col">Observer</th><th scope="col">Observed</th><th scope="col">Quality grade</th>
+      ${extraHeading ? `<th scope="col">${extraHeading}</th>` : ''}
+    </tr></thead>
+    <tbody>${observationRows(records, extraCell)}</tbody>`;
+}
+
+// Coarsest proposed records first, then alphabetical by taxon.
+function byRankThenName(a, b) {
+  return (RANK_LEVEL[b.rank] ?? 0) - (RANK_LEVEL[a.rank] ?? 0) ||
+    (a.taxon?.name ?? '').localeCompare(b.taxon?.name ?? '');
+}
+
+function renderQueues(records) {
+  const pending = records.filter(r => r.stage === 'pending').sort(byRankThenName);
+  const candidates = records.filter(r => r.stage === 'candidate').sort(byRankThenName);
+  document.getElementById('pending-heading').textContent = `Awaiting park confirmation (${formatNumber(pending.length)})`;
+  document.getElementById('candidate-heading').textContent = `Awaiting ID confirmation (${formatNumber(candidates.length)})`;
+  document.getElementById('pending-table').innerHTML = observationTable(pending, { emptyMessage: 'Nothing is waiting on park confirmation.' });
+  document.getElementById('candidate-table').innerHTML = observationTable(candidates, { emptyMessage: 'Nothing is waiting on ID help.' });
+
+  const download = document.getElementById('download-pending');
+  download.disabled = pending.length === 0;
+  download.onclick = () => downloadCsv(`smokies-atbi-awaiting-park-confirmation-${today()}.csv`, pending);
+}
+
+// ----- Needs attention -----------------------------------------------------
+const ISSUE_TYPES = {
+  coarser: {
+    title: 'Identification is coarser than the record',
+    note: 'The observation is currently identified to a higher rank than the record it\'s flagged as, such as a species record on an observation now identified only to genus. The ID may have changed since it was flagged.',
+  },
+  duplicate: {
+    title: 'Same taxon flagged more than once',
+    note: 'The same taxon is flagged as a confirmed or pending new record on more than one observation. That can be intentional, but usually only one observation is the first record, and a taxon that\'s already confirmed isn\'t new for the next observation.',
+  },
+  outside: {
+    title: 'Outside the park',
+    note: 'iNaturalist doesn\'t place these observations inside Great Smoky Mountains National Park, so they\'re left out of every count above. The location may be just outside the boundary, or obscured.',
+  },
+  casual: {
+    title: 'Casual grade',
+    note: 'Casual observations aren\'t verifiable, for example because they\'re marked captive or cultivated or are missing a date or location.',
+  },
+  noTaxon: {
+    title: 'No identification',
+    note: 'These observations have no identification at all.',
+  },
+  unknown: {
+    title: 'Unrecognized field value',
+    note: 'The field value isn\'t one of the values this dashboard knows about, so it\'s left out of the counts above.',
+  },
+};
+
+function findIssues(records) {
+  const issues = Object.fromEntries(Object.keys(ISSUE_TYPES).map(type => [type, []]));
+  for (const r of records) {
+    if (!r.inPark) issues.outside.push({ record: r, detail: 'Not in place 72645' });
+    if (r.stage === 'unknown') issues.unknown.push({ record: r, detail: 'Value not recognized' });
+    if (r.qualityGrade === 'casual') issues.casual.push({ record: r, detail: 'Casual' });
+    if (!r.taxon) {
+      issues.noTaxon.push({ record: r, detail: 'No ID' });
+    } else if (r.rank && r.taxon.rank_level > RANK_LEVEL[r.rank]) {
+      issues.coarser.push({ record: r, detail: `Flagged as a ${r.rank} record; identified to ${r.taxon.rank}` });
+    }
+  }
+  // Only records identified at exactly the claimed rank can be matched by taxon ID.
+  const atRecordRank = records.filter(r => r.rank && r.inPark && r.taxon?.rank_level === RANK_LEVEL[r.rank]);
+  for (const group of groupBy(atRecordRank, r => r.taxon.id).values()) {
+    if (group.length < 2) continue;
+    for (const r of group) {
+      const others = group.filter(other => other !== r)
+        .map(other => `<a href="${observationUrl(other.id)}">${other.id}</a> (${STAGE_LABELS[other.stage].toLowerCase()})`);
+      issues.duplicate.push({ record: r, detail: `Also on ${others.join(', ')}` });
+    }
+  }
+  return issues;
+}
+
+function renderAttention(records) {
+  const issues = findIssues(records);
+  const sections = Object.entries(ISSUE_TYPES)
+    .filter(([type]) => issues[type].length > 0)
+    .map(([type, { title, note }]) => {
+      const items = issues[type];
+      const table = observationTable(items.map(item => item.record), {
+        extraHeading: 'Why',
+        extraCell: r => items.find(item => item.record === r).detail,
+      });
+      return `<h3>${title} (${formatNumber(items.length)})</h3>
+        <p class="note">${note}</p>
+        <div class="table-wrap"><table>${table}</table></div>`;
+    });
+  document.getElementById('attention-list').innerHTML = sections.join('') ||
+    '<p>Nothing needs attention right now.</p>';
+}
+
+// ----- CSV export ----------------------------------------------------------
+const CSV_COLUMNS = [
+  ['observation_id', r => r.id],
+  ['observation_url', r => observationUrl(r.id)],
+  ['field_value', r => r.value],
+  ['stage', r => STAGE_LABELS[r.stage]],
+  ['taxon_id', r => r.taxon?.id],
+  ['taxon_name', r => r.taxon?.name],
+  ['taxon_rank', r => r.taxon?.rank],
+  ['common_name', r => r.taxon?.preferred_common_name],
+  ['taxonomic_group', r => groupLabel(r.taxon)],
+  ['observer_login', r => r.user.login],
+  ['observer_name', r => r.user.name],
+  ['observed_on', r => r.observedOn],
+  ['quality_grade', r => r.qualityGrade],
+  ['inside_park', r => (r.inPark ? 'yes' : 'no')],
+];
+
+function csvCell(value) {
+  let text = String(value ?? '');
+  // Keep spreadsheet apps from treating names that start with = + - @ as formulas.
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadCsv(filename, records) {
+  const lines = [
+    CSV_COLUMNS.map(([heading]) => heading).join(','),
+    ...records.map(r => CSV_COLUMNS.map(([, valueOf]) => csvCell(valueOf(r))).join(',')),
+  ];
+  // The byte-order mark lets Excel read accented names correctly.
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+// ----- Main ----------------------------------------------------------------
+async function run() {
+  setStatus('Loading observations from iNaturalist…');
+  // An empty field value matches any value. The search isn't limited to the park so stray records can be flagged below.
+  const observations = await inatFetchAll('/v2/observations', { [`field:${FIELD_NAME}`]: '', fields: OBS_FIELDS },
+    (loaded, total) => setStatus(`Loading observations from iNaturalist… ${formatNumber(loaded)} of ${formatNumber(total)}`));
+
+  const records = observations.map(toRecord);
+  const inPark = records.filter(r => r.inPark);
+  renderTiles(inPark);
+  renderRankTables(inPark);
+  renderCharts(inPark);
+  renderObservers(inPark);
+  renderQueues(inPark);
+  renderAttention(records);
+  document.getElementById('download-all').onclick = () => downloadCsv(`smokies-atbi-new-records-${today()}.csv`, records);
+
+  const loadedAt = new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  setStatus(`Loaded ${formatNumber(records.length)} flagged observations from iNaturalist on ${loadedAt}.`);
+  document.getElementById('dashboard').hidden = false;
+}
+
+run().catch(err => { console.error(err); setStatus(err.message, true); });
+</script>
+</body>
+</html>

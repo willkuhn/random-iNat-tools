@@ -31,7 +31,7 @@ Hosting is GitHub Pages from the repo root, so a tool lives at `https://willkuhn
 - **Escape API text** with `escapeHtml()` before putting it in `innerHTML`. Taxon names, user names, and descriptions are user-supplied.
 - **Link back to iNat** for every record shown (observation, taxon, user, place), and show media with its attribution and license.
 - **Accessible and responsive.** Real `<label>`s, a live status region, semantic tables, readable contrast in both color schemes, no horizontal scrolling on phones except inside wide tables.
-- Prefer API v1 (`api.inaturalist.org/v1`). Use v2 only when a tool needs something v1 lacks, and note it in the tool's README.
+- Prefer API v1 (`api.inaturalist.org/v1`). Use v2 only when a tool needs something v1 lacks, and note it in the tool's README. The common case: fetching more than a page or two of full observations, where v2's `fields` parameter (e.g. `fields=(id:!t,taxon:(name:!t))`) cuts each record from ~100 KB to ~1 KB. API paths passed to the client include the version (`/v1/...`, `/v2/...`).
 
 ## iNaturalist rules every tool must follow
 

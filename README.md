@@ -2,7 +2,7 @@
 
 Small, single-purpose tools for handling, summarizing, and visualizing [iNaturalist](https://www.inaturalist.org) data.
 
-Each tool is one HTML page that runs entirely in your browser and talks directly to the public [iNaturalist API](https://api.inaturalist.org/v1/docs/). There's nothing to install, no account to create, and no server in the middle: open a tool, fill in the form, and go.
+Each tool is one HTML page that runs entirely in your browser and talks directly to the public [iNaturalist API](https://api.inaturalist.org/v1/docs/). There's nothing to install, no account to create, and no server in the middle: open a tool and go.
 
 Inspired by [@jumear](https://github.com/jumear)'s excellent [stirfry](https://github.com/jumear/stirfry) collection.
 
@@ -10,13 +10,13 @@ Inspired by [@jumear](https://github.com/jumear)'s excellent [stirfry](https://g
 
 | Tool | What it does | Docs |
 |:-----|:-------------|:-----|
-| _Nothing here yet. Check back soon._ | | |
+| [Smokies ATBI new records](https://willkuhn.github.io/random-iNat-tools/tools/smokies-atbi-new-records/) | Dashboard of iNaturalist observations flagged as new records for Great Smoky Mountains National Park's All Taxa Biodiversity Inventory: counts by stage and rank, top observers, the confirmation queue, and data checks. | [docs](tools/smokies-atbi-new-records/) |
 
 ## Using the tools
 
 **In your browser.** Click a tool's name in the table above. Tools are hosted on GitHub Pages at `https://willkuhn.github.io/random-iNat-tools/`.
 
-**Share or bookmark a result.** Every tool keeps its settings in the URL query string (for example `?taxon_id=47157&place_id=1`), so the address bar always describes exactly what you're looking at. Copy it to share a result or come back to it later.
+**Share or bookmark a result.** Tools that take settings keep them in the URL query string (for example `?taxon_id=47157&place_id=1`), so the address bar always describes exactly what you're looking at. Copy it to share a result or come back to it later.
 
 **Run it locally.** Clone the repo and serve it with any static file server:
 
