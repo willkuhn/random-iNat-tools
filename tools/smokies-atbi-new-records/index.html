@@ -116,12 +116,10 @@
 
   /* Observers and observations */
   .person { display: flex; align-items: center; gap: 0.5rem; }
-  .person a { min-width: 0; }
-  .login { overflow-wrap: anywhere; }
+  .person a { min-width: 0; overflow-wrap: anywhere; }
   @media (max-width: 30rem) {
     th, td { padding: 0.4rem 0.35rem; }
     .person .avatar { display: none; }
-    .person .login { display: block; }
   }
   .avatar {
     flex: none;
@@ -136,7 +134,6 @@
     color: var(--text-muted);
     font-weight: 600;
   }
-  .login { color: var(--text-muted); font-size: 0.85rem; }
   .thumb { width: 64px; }
   .thumb img { display: block; width: 48px; height: 48px; object-fit: cover; border-radius: 4px; background: var(--bg-alt); }
   .common { display: block; color: var(--text-muted); font-size: 0.85rem; }
@@ -145,8 +142,6 @@
   .section-head { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: baseline; justify-content: space-between; }
   .section-head h3 { margin-bottom: 0; }
 
-  ol.workflow { padding-left: 1.4rem; max-width: 48rem; }
-  ol.workflow li { margin-bottom: 0.5rem; }
   code { font-size: 0.9em; padding: 0 0.2em; background: var(--bg-alt); border-radius: 3px; }
 
   footer {
@@ -163,12 +158,10 @@
 <header>
   <h1>Smokies ATBI new records from iNaturalist</h1>
   <p class="lede">
-    Tracks iNaturalist observations that document taxa new to the checklists of
-    Great Smoky Mountains National Park's All Taxa Biodiversity Inventory (ATBI). Observations are tagged and
+    Tracks iNaturalist observations that represent new records for Great Smoky Mountains National Park
+    as part of the <a href="https://dlia.org/about/atbi/">Smokies ATBI</a>. Observations are tagged and
     tracked with the observation field
     <a href="https://www.inaturalist.org/observation_fields/14382">New Smokies ATBI record?</a>.
-    Counts include observations inside the park (iNaturalist place
-    <a href="https://www.inaturalist.org/places/72645">72645</a>); select any number to see those observations on iNaturalist.
   </p>
 </header>
 
@@ -206,7 +199,7 @@
 
     <section id="observers">
       <h2>Top observers</h2>
-      <p class="note">People whose observations became confirmed new records for the park. "In progress" counts their observations still awaiting ID or park confirmation.</p>
+      <p class="note">People whose observations became confirmed new records for the park. "In progress" counts their observations still awaiting ID or final confirmation.</p>
       <div class="table-wrap"><table id="observers-table"></table></div>
       <div class="toolbar"><button type="button" class="secondary" id="show-all-observers" hidden></button></div>
     </section>
@@ -214,33 +207,17 @@
     <section id="in-progress">
       <h2>In progress</h2>
       <div class="section-head">
-        <h3 id="pending-heading">Awaiting park confirmation</h3>
-        <button type="button" class="secondary" id="download-pending">Download list for park review (CSV)</button>
+        <h3 id="pending-heading">Awaiting final confirmation</h3>
+        <button type="button" class="secondary" id="download-pending">Download this list (CSV)</button>
       </div>
-      <p class="note">The ID is settled and the taxon isn't on the park's checklists. These are waiting for park staff to confirm.</p>
+      <p class="note">The ID is settled and the taxon appears to be new for the park. These are awaiting a final check before being declared “new.”</p>
       <div class="table-wrap"><table id="pending-table"></table></div>
 
       <h3 id="candidate-heading">Awaiting ID confirmation</h3>
       <p class="note">Likely new records that are still waiting on help with the identification.</p>
       <div class="table-wrap"><table id="candidate-table"></table></div>
     </section>
-
-    <section id="attention">
-      <h2>Needs attention</h2>
-      <p class="note">Automatic checks for flagged observations that may need a second look.</p>
-      <div id="attention-list"></div>
-    </section>
   </div>
-
-  <section id="about">
-    <h2>How the workflow works</h2>
-    <ol class="workflow">
-      <li><strong>Watch.</strong> We look for verifiable iNaturalist observations from inside the park of interesting or unusual taxa that may be new to the park.</li>
-      <li><strong>Check the ID.</strong> Do the photos or sounds support an identification at that rank? We verify it ourselves or ask experts to weigh in. While we wait for that help, the observation is marked <code>awaiting ID confirmation</code>.</li>
-      <li><strong>Check the checklists.</strong> Once the ID is solid, we compare the taxon and its synonyms against the park's species checklists. If it's missing, the observation is marked with the highest rank it would add, like <code>species (confirming)</code> when the park already has the genus but not the species.</li>
-      <li><strong>Park confirmation.</strong> Park staff double-check the observation and search the park's checklists and collections databases. If they agree it's new, they add it to the park checklist and the value changes to the plain rank (<code>species</code>), with a comment on the observation noting the new record. If a record is later re-identified as something already known, the field is removed and a comment explains why.</li>
-    </ol>
-  </section>
 </main>
 
 <footer>
@@ -379,7 +356,7 @@ const RANK_LEVEL = Object.fromEntries(RECORD_RANKS);
 
 const STAGE_LABELS = {
   confirmed: 'Confirmed new record',
-  pending: 'Awaiting park confirmation',
+  pending: 'Awaiting final confirmation',
   candidate: 'Awaiting ID confirmation',
   unknown: 'Unrecognized value',
 };
@@ -394,7 +371,7 @@ const ICONIC_LABELS = {
 };
 
 // Only the attributes the dashboard uses (v2 API `fields`), which keeps each page of results small.
-const OBS_FIELDS = '(id:!t,observed_on:!t,quality_grade:!t,place_ids:!t,' +
+const OBS_FIELDS = '(id:!t,observed_on:!t,quality_grade:!t,' +
   'taxon:(id:!t,name:!t,rank:!t,rank_level:!t,preferred_common_name:!t,iconic_taxon_name:!t),' +
   'user:(id:!t,login:!t,name:!t,icon_url:!t),ofvs:(field_id:!t,value:!t),photos:(url:!t,attribution:!t))';
 
@@ -419,7 +396,6 @@ function toRecord(obs) {
     user: obs.user,
     observedOn: obs.observed_on,
     qualityGrade: obs.quality_grade,
-    inPark: (obs.place_ids ?? []).includes(PLACE_ID),
     photo: obs.photos?.[0],
   };
 }
@@ -468,9 +444,9 @@ function avatarHtml(user) {
   return `<span class="avatar" aria-hidden="true">${escapeHtml(user.login.charAt(0).toUpperCase())}</span>`;
 }
 
+// Username only, as iNaturalist shows people elsewhere.
 function personHtml(user) {
-  const label = user.name ? `${escapeHtml(user.name)} <span class="login">${escapeHtml(user.login)}</span>` : escapeHtml(user.login);
-  return `<span class="person">${avatarHtml(user)}<a href="${personUrl(user.login)}">${label}</a></span>`;
+  return `<span class="person">${avatarHtml(user)}<a href="${personUrl(user.login)}">${escapeHtml(user.login)}</a></span>`;
 }
 
 function photoHtml(record) {
@@ -486,7 +462,7 @@ function renderTiles(records) {
   const observerCount = new Set(confirmed.map(r => r.user.id)).size;
   const tiles = [
     { label: 'Confirmed new records', records: confirmed, section: '#by-rank' },
-    { label: 'Awaiting park confirmation', records: byStage.get('pending') ?? [], section: '#in-progress' },
+    { label: 'Awaiting final confirmation', records: byStage.get('pending') ?? [], section: '#in-progress' },
     { label: 'Awaiting ID confirmation', records: byStage.get('candidate') ?? [], section: '#candidate-heading' },
   ].map(({ label, records, section }) => {
     // Too many IDs for one link: point to the breakdown on this page instead.
@@ -517,7 +493,7 @@ function renderRankTables(records) {
   const total = stage => records.filter(r => r.stage === stage).length;
 
   document.getElementById('rank-table').innerHTML = `
-    <thead><tr><th scope="col">Rank</th><th scope="col" class="num">Confirmed</th><th scope="col" class="num">Awaiting park confirmation</th></tr></thead>
+    <thead><tr><th scope="col">Rank</th><th scope="col" class="num">Confirmed</th><th scope="col" class="num">Awaiting final confirmation</th></tr></thead>
     <tbody>${rows.join('')}</tbody>
     <tfoot><tr><th scope="row">Total</th><td class="num">${formatNumber(total('confirmed'))}</td><td class="num">${formatNumber(total('pending'))}</td></tr></tfoot>`;
 
@@ -595,7 +571,7 @@ function renderObservers(records) {
 }
 
 // ----- In-progress lists ---------------------------------------------------
-function observationRows(records, extraCell) {
+function observationRows(records) {
   return records.map(r => `<tr>
     <td class="thumb">${photoHtml(r)}</td>
     <td>${taxonHtml(r.taxon)}</td>
@@ -603,18 +579,16 @@ function observationRows(records, extraCell) {
     <td><a href="${personUrl(r.user.login)}">${escapeHtml(r.user.login)}</a></td>
     <td>${escapeHtml(r.observedOn ?? 'Unknown')}</td>
     <td>${escapeHtml(QUALITY_LABELS[r.qualityGrade] ?? r.qualityGrade)}</td>
-    ${extraCell ? `<td>${extraCell(r)}</td>` : ''}
   </tr>`).join('');
 }
 
-function observationTable(records, { emptyMessage, extraHeading, extraCell }) {
+function observationTable(records, emptyMessage) {
   if (records.length === 0) return `<tbody><tr><td class="zero">${emptyMessage}</td></tr></tbody>`;
   return `<thead><tr>
       <th scope="col">Observation</th><th scope="col">Taxon</th><th scope="col">Field value</th>
       <th scope="col">Observer</th><th scope="col">Observed</th><th scope="col">Quality grade</th>
-      ${extraHeading ? `<th scope="col">${extraHeading}</th>` : ''}
     </tr></thead>
-    <tbody>${observationRows(records, extraCell)}</tbody>`;
+    <tbody>${observationRows(records)}</tbody>`;
 }
 
 // Coarsest proposed records first, then alphabetical by taxon.
@@ -626,85 +600,14 @@ function byRankThenName(a, b) {
 function renderQueues(records) {
   const pending = records.filter(r => r.stage === 'pending').sort(byRankThenName);
   const candidates = records.filter(r => r.stage === 'candidate').sort(byRankThenName);
-  document.getElementById('pending-heading').textContent = `Awaiting park confirmation (${formatNumber(pending.length)})`;
+  document.getElementById('pending-heading').textContent = `Awaiting final confirmation (${formatNumber(pending.length)})`;
   document.getElementById('candidate-heading').textContent = `Awaiting ID confirmation (${formatNumber(candidates.length)})`;
-  document.getElementById('pending-table').innerHTML = observationTable(pending, { emptyMessage: 'Nothing is waiting on park confirmation.' });
-  document.getElementById('candidate-table').innerHTML = observationTable(candidates, { emptyMessage: 'Nothing is waiting on ID help.' });
+  document.getElementById('pending-table').innerHTML = observationTable(pending, 'Nothing is waiting on final confirmation.');
+  document.getElementById('candidate-table').innerHTML = observationTable(candidates, 'Nothing is waiting on ID help.');
 
   const download = document.getElementById('download-pending');
   download.disabled = pending.length === 0;
-  download.onclick = () => downloadCsv(`smokies-atbi-awaiting-park-confirmation-${today()}.csv`, pending);
-}
-
-// ----- Needs attention -----------------------------------------------------
-const ISSUE_TYPES = {
-  coarser: {
-    title: 'Identification is coarser than the record',
-    note: 'The observation is currently identified to a higher rank than the record it\'s flagged as, such as a species record on an observation now identified only to genus. The ID may have changed since it was flagged.',
-  },
-  duplicate: {
-    title: 'Same taxon flagged more than once',
-    note: 'The same taxon is flagged as a confirmed or pending new record on more than one observation. That can be intentional, but usually only one observation is the first record, and a taxon that\'s already confirmed isn\'t new for the next observation.',
-  },
-  outside: {
-    title: 'Outside the park',
-    note: 'iNaturalist doesn\'t place these observations inside Great Smoky Mountains National Park, so they\'re left out of every count above. The location may be just outside the boundary, or obscured.',
-  },
-  casual: {
-    title: 'Casual grade',
-    note: 'Casual observations aren\'t verifiable, for example because they\'re marked captive or cultivated or are missing a date or location.',
-  },
-  noTaxon: {
-    title: 'No identification',
-    note: 'These observations have no identification at all.',
-  },
-  unknown: {
-    title: 'Unrecognized field value',
-    note: 'The field value isn\'t one of the values this dashboard knows about, so it\'s left out of the counts above.',
-  },
-};
-
-function findIssues(records) {
-  const issues = Object.fromEntries(Object.keys(ISSUE_TYPES).map(type => [type, []]));
-  for (const r of records) {
-    if (!r.inPark) issues.outside.push({ record: r, detail: 'Not in place 72645' });
-    if (r.stage === 'unknown') issues.unknown.push({ record: r, detail: 'Value not recognized' });
-    if (r.qualityGrade === 'casual') issues.casual.push({ record: r, detail: 'Casual' });
-    if (!r.taxon) {
-      issues.noTaxon.push({ record: r, detail: 'No ID' });
-    } else if (r.rank && r.taxon.rank_level > RANK_LEVEL[r.rank]) {
-      issues.coarser.push({ record: r, detail: `Flagged as a ${r.rank} record; identified to ${r.taxon.rank}` });
-    }
-  }
-  // Only records identified at exactly the claimed rank can be matched by taxon ID.
-  const atRecordRank = records.filter(r => r.rank && r.inPark && r.taxon?.rank_level === RANK_LEVEL[r.rank]);
-  for (const group of groupBy(atRecordRank, r => r.taxon.id).values()) {
-    if (group.length < 2) continue;
-    for (const r of group) {
-      const others = group.filter(other => other !== r)
-        .map(other => `<a href="${observationUrl(other.id)}">${other.id}</a> (${STAGE_LABELS[other.stage].toLowerCase()})`);
-      issues.duplicate.push({ record: r, detail: `Also on ${others.join(', ')}` });
-    }
-  }
-  return issues;
-}
-
-function renderAttention(records) {
-  const issues = findIssues(records);
-  const sections = Object.entries(ISSUE_TYPES)
-    .filter(([type]) => issues[type].length > 0)
-    .map(([type, { title, note }]) => {
-      const items = issues[type];
-      const table = observationTable(items.map(item => item.record), {
-        extraHeading: 'Why',
-        extraCell: r => items.find(item => item.record === r).detail,
-      });
-      return `<h3>${title} (${formatNumber(items.length)})</h3>
-        <p class="note">${note}</p>
-        <div class="table-wrap"><table>${table}</table></div>`;
-    });
-  document.getElementById('attention-list').innerHTML = sections.join('') ||
-    '<p>Nothing needs attention right now.</p>';
+  download.onclick = () => downloadCsv(`smokies-atbi-awaiting-final-confirmation-${today()}.csv`, pending);
 }
 
 // ----- CSV export ----------------------------------------------------------
@@ -722,7 +625,6 @@ const CSV_COLUMNS = [
   ['observer_name', r => r.user.name],
   ['observed_on', r => r.observedOn],
   ['quality_grade', r => r.qualityGrade],
-  ['inside_park', r => (r.inPark ? 'yes' : 'no')],
 ];
 
 function csvCell(value) {
@@ -751,18 +653,16 @@ const today = () => new Date().toISOString().slice(0, 10);
 // ----- Main ----------------------------------------------------------------
 async function run() {
   setStatus('Loading observations from iNaturalist…');
-  // An empty field value matches any value. The search isn't limited to the park so stray records can be flagged below.
-  const observations = await inatFetchAll('/v2/observations', { [`field:${FIELD_NAME}`]: '', fields: OBS_FIELDS },
+  // An empty field value matches any value.
+  const observations = await inatFetchAll('/v2/observations', { [`field:${FIELD_NAME}`]: '', place_id: PLACE_ID, fields: OBS_FIELDS },
     (loaded, total) => setStatus(`Loading observations from iNaturalist… ${formatNumber(loaded)} of ${formatNumber(total)}`));
 
   const records = observations.map(toRecord);
-  const inPark = records.filter(r => r.inPark);
-  renderTiles(inPark);
-  renderRankTables(inPark);
-  renderCharts(inPark);
-  renderObservers(inPark);
-  renderQueues(inPark);
-  renderAttention(records);
+  renderTiles(records);
+  renderRankTables(records);
+  renderCharts(records);
+  renderObservers(records);
+  renderQueues(records);
   document.getElementById('download-all').onclick = () => downloadCsv(`smokies-atbi-new-records-${today()}.csv`, records);
 
   const loadedAt = new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });

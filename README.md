@@ -10,7 +10,7 @@ Inspired by [@jumear](https://github.com/jumear)'s excellent [stirfry](https://g
 
 | Tool | What it does | Docs |
 |:-----|:-------------|:-----|
-| [Smokies ATBI new records](https://willkuhn.github.io/random-iNat-tools/tools/smokies-atbi-new-records/) | Dashboard of iNaturalist observations flagged as new records for Great Smoky Mountains National Park's All Taxa Biodiversity Inventory: counts by stage and rank, top observers, the confirmation queue, and data checks. | [docs](https://github.com/willkuhn/random-iNat-tools/tree/main/tools/smokies-atbi-new-records) |
+| [Smokies ATBI new records](https://willkuhn.github.io/random-iNat-tools/tools/smokies-atbi-new-records/) | Dashboard of iNaturalist observations flagged as new records for Great Smoky Mountains National Park's All Taxa Biodiversity Inventory: counts by stage and rank, top observers, and the confirmation queue. | [docs](https://github.com/willkuhn/random-iNat-tools/tree/main/tools/smokies-atbi-new-records) |
 
 ## Using the tools
 
