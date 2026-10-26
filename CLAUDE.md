@@ -20,7 +20,7 @@ Hosting is GitHub Pages from the repo root, so a tool lives at `https://willkuhn
 1. Copy `tools/_template/` to `tools/<tool-slug>/` (lowercase, hyphenated, descriptive: `species-accumulation-curve`, not `tool1`).
 2. Replace every placeholder: `Tool Name`, `TOOL-SLUG`, the meta description, the form fields, and `run()`.
 3. Fill in the tool's README from the template headings, including the endpoints used and roughly how many requests one run makes.
-4. Add a row to the Tools table in the root README.
+4. Add a row to the Tools table in the root README. Link the docs column to the GitHub folder (`https://github.com/willkuhn/random-iNat-tools/tree/main/tools/<tool-slug>`), since a relative link opens the tool itself on Pages.
 5. Test locally with `python3 -m http.server 8000` and open `http://localhost:8000/tools/<tool-slug>/`. Check light and dark mode and a narrow (phone-width) window.
 
 ### Conventions
