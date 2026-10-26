@@ -1,0 +1,22 @@
+# Local copies of iNaturalist's guideline pages (iNat's text; read the originals online)
+reference/
+
+# Local Claude Code settings and preview config
+.claude/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# In case a tool ever grows a script or build step
+__pycache__/
+.venv/
+node_modules/
+
+# iNat export files dropped in for testing hold other people's data; small example files are fine
+*.csv
+*.zip
+!tools/**/example*.csv
