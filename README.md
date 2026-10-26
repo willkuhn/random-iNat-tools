@@ -2,7 +2,7 @@
 
 Small, single-purpose tools for handling, summarizing, and visualizing [iNaturalist](https://www.inaturalist.org) data.
 
-Each tool is one HTML page that runs entirely in your browser and talks directly to the public [iNaturalist API](https://api.inaturalist.org/v1/docs/). There's nothing to install, no account to create, and no server in the middle: open a tool and go.
+Each tool is one HTML page that runs entirely in your browser and talks directly to the public [iNaturalist API](https://api.inaturalist.org/v2/docs/). There's nothing to install, no account to create, and no server in the middle: open a tool and go.
 
 Inspired by [@jumear](https://github.com/jumear)'s excellent [stirfry](https://github.com/jumear/stirfry) collection.
 

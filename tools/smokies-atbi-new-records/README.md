@@ -32,7 +32,7 @@ If a record is later retracted, for example because the observation is re-identi
 ## How it uses the iNaturalist API
 
 - **Endpoint:** `GET /v2/observations?field:New Smokies ATBI record?=&place_id=72645` (an empty field value matches any value), paged with `order_by=id&id_above=...`
-- **Why v2:** the `fields` parameter requests only the dozen attributes the dashboard uses, about 1 KB per observation instead of roughly 100 KB from v1. That keeps the page fast and light on iNaturalist's servers.
+- **Fields:** the `fields` parameter requests only the dozen attributes the dashboard uses, about 1 KB per observation instead of roughly 100 KB for a full record. That keeps the page fast and light on iNaturalist's servers.
 - **Requests per load:** one per 200 flagged observations (3 as of October 2026), sent about one second apart.
 - **Sign-in:** not needed. All data is public.
 

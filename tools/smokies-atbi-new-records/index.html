@@ -231,10 +231,12 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// iNaturalist API client
+// iNaturalist API client (v2: https://api.inaturalist.org/v2/docs/)
 // Follows https://www.inaturalist.org/pages/api+recommended+practices:
 // about 1 request per second, back off on HTTP 429, largest page size,
 // and no paging past the 10,000-result ceiling.
+// v2 returns only each record's uuid unless `fields` lists the attributes you want,
+// e.g. fields: '(id:!t,taxon:(name:!t))'.
 // Keep this block identical across tools so fixes can be copied between them.
 // ---------------------------------------------------------------------------
 const INAT_API = 'https://api.inaturalist.org';
@@ -243,8 +245,10 @@ const RATE_LIMIT_BACKOFF_MS = 10000;
 const MAX_RETRIES = 3;
 const MAX_PER_PAGE = 200;
 const MAX_RESULTS = 10000;
-// Most records the API returns for a comma-separated ID lookup like /v1/taxa/1,2,3 (from the v1 API docs).
-const MAX_IDS_PER_REQUEST = { '/v1/identifications': 30, '/v1/observations': 200, '/v1/places': 500, '/v1/projects': 100, '/v1/taxa': 30 };
+// Most records one comma-separated ID lookup like /v2/taxa/1,2,3 returns. The v2 docs don't list these;
+// they were measured in October 2026. /v2/places silently stops at 200, and /v2/users takes one ID at a time.
+// v2 has no identifications search, so identifications still come from v1.
+const MAX_IDS_PER_REQUEST = { '/v1/identifications': 30, '/v2/observations': 200, '/v2/places': 200, '/v2/projects': 10, '/v2/taxa': 30 };
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -257,7 +261,7 @@ function waitForRequestSlot() {
   return sleep(slot - now);
 }
 
-// GET an API path, e.g. inatFetch('/v1/observations', {taxon_id: 47157, per_page: 0}).
+// GET an API path, e.g. inatFetch('/v2/observations', {taxon_id: 47157, per_page: 0}).
 // Params set to undefined or null are left out; an empty string is sent (e.g. `field:Name=` matches any value).
 async function inatFetch(path, params = {}) {
   const url = new URL(INAT_API + path);
@@ -282,7 +286,7 @@ async function inatFetch(path, params = {}) {
 }
 
 // Fetch every result of a search by walking id_above, as iNat recommends instead of deep paging.
-// Only for endpoints that accept id_above and order_by=id: /v1/observations, /v1/identifications, /v1/taxa, /v2/observations.
+// Only for endpoints that accept id_above and order_by=id: /v2/observations, /v2/taxa, /v1/identifications.
 // Refuses searches over MAX_RESULTS so users narrow their filters or use an export instead.
 async function inatFetchAll(path, params = {}, onProgress = () => {}) {
   const results = [];
@@ -304,15 +308,18 @@ async function inatFetchAll(path, params = {}, onProgress = () => {}) {
   }
 }
 
-// Look up records by ID in as few requests as possible, e.g. inatFetchByIds('/v1/taxa', [1, 2, 3]).
+// Look up records by ID in as few requests as possible, e.g. inatFetchByIds('/v2/taxa', [1, 2, 3], {fields: '(name:!t)'}).
+// /v2/observations/{...} only accepts UUIDs, so observation IDs go in the search's `id` parameter instead.
 async function inatFetchByIds(path, ids, params = {}) {
   const batchSize = MAX_IDS_PER_REQUEST[path];
   if (!batchSize) throw new Error(`${path} doesn't support looking up several IDs at once`);
   const unique = [...new Set(ids)];
   const results = [];
   for (let i = 0; i < unique.length; i += batchSize) {
-    const batch = unique.slice(i, i + batchSize);
-    const data = await inatFetch(`${path}/${batch.join(',')}`, params);
+    const batch = unique.slice(i, i + batchSize).join(',');
+    const data = path === '/v2/observations'
+      ? await inatFetch(path, { ...params, id: batch, per_page: batchSize })
+      : await inatFetch(`${path}/${batch}`, params);
     results.push(...data.results);
   }
   return results;

@@ -25,7 +25,7 @@ A short paragraph on the question this tool answers and who might find it useful
 
 ## How it uses the iNaturalist API
 
-- **Endpoints:** `GET /v1/observations` (count only, `per_page=0`)
+- **Endpoints:** `GET /v2/observations` (count only, `per_page=0`)
 - **Requests per run:** 1
 - **Sign-in:** not needed
 

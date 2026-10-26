@@ -31,7 +31,7 @@ Hosting is GitHub Pages from the repo root, so a tool lives at `https://willkuhn
 - **Escape API text** with `escapeHtml()` before putting it in `innerHTML`. Taxon names, user names, and descriptions are user-supplied.
 - **Link back to iNat** for every record shown (observation, taxon, user, place), and show media with its attribution and license.
 - **Accessible and responsive.** Real `<label>`s, a live status region, semantic tables, readable contrast in both color schemes, no horizontal scrolling on phones except inside wide tables.
-- Prefer API v1 (`api.inaturalist.org/v1`). Use v2 only when a tool needs something v1 lacks, and note it in the tool's README. The common case: fetching more than a page or two of full observations, where v2's `fields` parameter (e.g. `fields=(id:!t,taxon:(name:!t))`) cuts each record from ~100 KB to ~1 KB. API paths passed to the client include the version (`/v1/...`, `/v2/...`).
+- Use API v2 (`api.inaturalist.org/v2`, [docs](https://api.inaturalist.org/v2/docs/)). v2 returns only each record's `uuid` unless the `fields` parameter lists the attributes you want, in RISON syntax (`fields=(id:!t,taxon:(name:!t))`). Ask for just what the tool shows: a full observation is ~100 KB, a trimmed one ~1 KB. Fall back to v1 only for things v2 lacks, such as searching identifications, and note it in the tool's README. API paths passed to the client include the version (`/v2/...`, `/v1/...`).
 
 ## iNaturalist rules every tool must follow
 
@@ -39,7 +39,7 @@ Sources (read the full text in `reference/` or online): [API Recommended Practic
 
 - **About 1 request per second, ~10k per day.** The template's client enforces the interval globally and backs off on HTTP 429. Never parallelize around it. Design tools so a typical run makes a handful of requests, and show progress for anything over ~10.
 - **Ask only for what's needed.** Use `per_page=0` when only a count is needed, filter server-side rather than client-side, and use `fields`/`only_id` style options where the endpoint supports them.
-- **Largest page size** (200 for most endpoints, 500 for `species_counts`), and **batch ID lookups** (`/observations/1,2,3`). Per-endpoint ID limits are in the template.
+- **Largest page size** (200 for most endpoints, 500 for `species_counts`), and **batch ID lookups** (`/v2/taxa/1,2,3`; `inatFetchByIds` does this). v2 limits are lower than v1's and some are silent, so use the per-endpoint limits in the template.
 - **No paging past 10,000 results.** Walk large-but-bounded result sets with `order_by=id&order=asc&id_above=<last id>`. Refuse searches over 10,000 records and point people to the [observation export](https://www.inaturalist.org/observations/export) or the [GBIF dataset](https://doi.org/10.15468/ab3s5x) instead. For tools that need lots of data, accept an uploaded export CSV and process it in the browser.
 - **Unauthenticated by default.** Only use a JWT (from `https://www.inaturalist.org/users/api_token`, sent as the `Authorization` header) when the data truly requires it, since authenticated responses aren't cached. Never store tokens beyond the session or send them anywhere except `api.inaturalist.org`.
 - **Read-only.** Tools must not post observations, identifications, comments, annotations, DQA votes, or messages without a human deciding on each individual item. Anything that writes must use OAuth (PKCE) so people act as themselves, never a shared account, and never automate messages. Treat any write feature as a design discussion with Will first.
