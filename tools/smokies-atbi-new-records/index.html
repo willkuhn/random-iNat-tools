@@ -96,7 +96,28 @@
   .tile-link { margin: 0; font-size: 0.85rem; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
 
-  .rank-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0 2rem; align-items: start; }
+  .table-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1.5rem 2rem; align-items: start; }
+  /* The county table has an extra column, so it gets more of the width. */
+  .place-tables { display: grid; gap: 1.5rem 2rem; align-items: start; }
+  @media (min-width: 56rem) { .place-tables { grid-template-columns: 2fr 3fr; } }
+  .place-tables tbody th, .place-tables tbody td:not(.num) { white-space: nowrap; }
+
+  /* Sortable column headings */
+  th button.sort {
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: inherit;
+    text-align: inherit;
+    background: none;
+    border: 0;
+    border-radius: 0;
+  }
+  th button.sort:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  /* Arrows are decoration; aria-sort tells screen readers the order. The second declaration hides them from readers that support it. */
+  th button.sort::after { content: "\00a0↕"; content: "\00a0↕" / ""; color: var(--text-muted); font-weight: 400; }
+  th[aria-sort="ascending"] button.sort::after { content: "\00a0▲"; content: "\00a0▲" / ""; color: inherit; }
+  th[aria-sort="descending"] button.sort::after { content: "\00a0▼"; content: "\00a0▼" / ""; color: inherit; }
 
   /* Horizontal bar lists */
   .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0 2rem; }
@@ -180,7 +201,7 @@
     <section id="by-rank">
       <h2>Records by rank</h2>
       <p class="note">Each row is the highest rank the observation adds to the park's checklists. For example, a new species in a genus the park already has counts as a species record.</p>
-      <div class="rank-tables">
+      <div class="table-pair">
         <div class="table-wrap"><table id="rank-table"></table></div>
         <div class="table-wrap"><table id="other-values-table"></table></div>
       </div>
@@ -196,6 +217,15 @@
         <div class="bars" id="year-bars"></div>
       </section>
     </div>
+
+    <section id="by-place">
+      <h2>Records by state and county</h2>
+      <p class="note">Based on where iNaturalist places each observation within its standard state and county boundaries.</p>
+      <div class="place-tables">
+        <div class="table-wrap"><table id="state-table"></table></div>
+        <div class="table-wrap"><table id="county-table"></table></div>
+      </div>
+    </section>
 
     <section id="observers">
       <h2>Top observers</h2>
@@ -378,9 +408,13 @@ const ICONIC_LABELS = {
 };
 
 // Only the attributes the dashboard uses (v2 API `fields`), which keeps each page of results small.
-const OBS_FIELDS = '(id:!t,observed_on:!t,quality_grade:!t,' +
+const OBS_FIELDS = '(id:!t,observed_on:!t,quality_grade:!t,place_ids:!t,place_guess:!t,location:!t,obscured:!t,' +
   'taxon:(id:!t,name:!t,rank:!t,rank_level:!t,preferred_common_name:!t,iconic_taxon_name:!t),' +
   'user:(id:!t,login:!t,name:!t,icon_url:!t),ofvs:(field_id:!t,value:!t),photos:(url:!t,attribution:!t))';
+const PLACE_FIELDS = '(id:!t,display_name:!t,admin_level:!t)';
+// iNaturalist's admin_level for the standard state and county places.
+const STATE_LEVEL = 10;
+const COUNTY_LEVEL = 20;
 
 // Sort a field value into a workflow stage, plus the rank of the record it claims, if any.
 function classify(fieldValue) {
@@ -393,8 +427,13 @@ function classify(fieldValue) {
   return { stage: 'unknown', rank: null };
 }
 
-function toRecord(obs) {
+// adminPlaces maps place ID to the state and county places the observations fall in.
+function toRecord(obs, adminPlaces) {
   const value = (obs.ofvs.find(ofv => ofv.field_id === FIELD_ID)?.value ?? '').trim();
+  const containing = (obs.place_ids ?? []).map(id => adminPlaces.get(id)).filter(Boolean);
+  // display_name reads like "Blount County, US, TN"; keep the first part.
+  const placeName = level => containing.find(place => place.admin_level === level)?.display_name.split(',')[0];
+  const [latitude, longitude] = obs.location?.split(',') ?? [];
   return {
     id: obs.id,
     value,
@@ -404,6 +443,12 @@ function toRecord(obs) {
     observedOn: obs.observed_on,
     qualityGrade: obs.quality_grade,
     photo: obs.photos?.[0],
+    state: placeName(STATE_LEVEL),
+    county: placeName(COUNTY_LEVEL),
+    placeGuess: obs.place_guess,
+    latitude,
+    longitude,
+    obscured: obs.obscured,
   };
 }
 
@@ -426,6 +471,38 @@ function countHtml(count, url) {
   return url ? `<a href="${url}">${formatNumber(count)}</a>` : formatNumber(count);
 }
 
+// A table cell counting records, linked to them on iNaturalist, with its raw number for sorting.
+function countCell(records) {
+  return `<td class="num" data-value="${records.length}">${countHtml(records.length, idListUrl(records))}</td>`;
+}
+
+// Column headings with data-sort="text" (A to Z first), "number" or "date" (highest or newest first)
+// become buttons that reorder the table body. Cells sort by their data-value, or their text if they have none.
+// Set aria-sort on the heading the rows arrive sorted by. onSort runs after each sort with the rows in their new order.
+function makeSortable(table, onSort = () => {}) {
+  if (!table.tHead) return;
+  const headings = [...table.tHead.rows[0].cells];
+  headings.forEach((heading, column) => {
+    const type = heading.dataset.sort;
+    if (!type) return;
+    heading.innerHTML = `<button type="button" class="sort">${heading.innerHTML}</button>`;
+    heading.firstChild.addEventListener('click', () => {
+      const first = type === 'text' ? 'ascending' : 'descending';
+      const direction = heading.getAttribute('aria-sort') === first ? (first === 'ascending' ? 'descending' : 'ascending') : first;
+      headings.forEach(other => other.removeAttribute('aria-sort'));
+      heading.setAttribute('aria-sort', direction);
+
+      const valueOf = row => row.cells[column].dataset.value ?? row.cells[column].textContent.trim();
+      const compare = type === 'number' ? (a, b) => Number(a) - Number(b) : (a, b) => a.localeCompare(b);
+      const sign = direction === 'ascending' ? 1 : -1;
+      const body = table.tBodies[0];
+      const rows = [...body.rows].sort((a, b) => sign * compare(valueOf(a), valueOf(b)));
+      body.append(...rows);
+      onSort(rows);
+    });
+  });
+}
+
 function groupBy(items, keyOf) {
   const groups = new Map();
   for (const item of items) {
@@ -436,12 +513,14 @@ function groupBy(items, keyOf) {
   return groups;
 }
 
-function taxonHtml(taxon) {
+// The taxon name links to the observation, as it does in iNaturalist's Explore grid.
+function taxonHtml(record) {
+  const taxon = record.taxon;
   if (!taxon) return '<span class="zero">No ID</span>';
   const name = taxon.rank_level <= 20 ? `<i>${escapeHtml(taxon.name)}</i>` : escapeHtml(taxon.name);
   const rankPrefix = taxon.rank_level > 10 ? `${escapeHtml(capitalize(taxon.rank))} ` : '';
   const common = taxon.preferred_common_name ? `<span class="common">${escapeHtml(taxon.preferred_common_name)}</span>` : '';
-  return `<a href="https://www.inaturalist.org/taxa/${taxon.id}">${rankPrefix}${name}</a>${common}`;
+  return `<a href="${observationUrl(record.id)}">${rankPrefix}${name}</a>${common}`;
 }
 
 function avatarHtml(user) {
@@ -538,6 +617,39 @@ function renderCharts(records) {
   renderBars('year-bars', byYear);
 }
 
+// ----- Records by state and county -----------------------------------------
+const PLACE_COUNT_COLUMNS = [['confirmed', 'Confirmed'], ['pending', 'Awaiting final confirmation'], ['candidate', 'Awaiting ID confirmation']];
+
+function renderPlaceTables(records) {
+  const tracked = records.filter(r => r.stage !== 'unknown');
+  const countHeadings = PLACE_COUNT_COLUMNS.map(([stage, heading]) =>
+    `<th scope="col" class="num" data-sort="number"${stage === 'confirmed' ? ' aria-sort="descending"' : ''}>${heading}</th>`).join('');
+  const countCells = group => PLACE_COUNT_COLUMNS.map(([stage]) => countCell(group.filter(r => r.stage === stage))).join('');
+  const totals = PLACE_COUNT_COLUMNS.map(([stage]) =>
+    `<td class="num">${formatNumber(tracked.filter(r => r.stage === stage).length)}</td>`).join('');
+  // Most confirmed records first.
+  const confirmedCount = group => group.filter(r => r.stage === 'confirmed').length;
+  const placeGroups = keyOf => [...groupBy(tracked, keyOf)]
+    .sort(([a, x], [b, y]) => confirmedCount(y) - confirmedCount(x) || a.localeCompare(b))
+    .map(([, group]) => group);
+
+  const stateTable = document.getElementById('state-table');
+  stateTable.innerHTML = `
+    <thead><tr><th scope="col" data-sort="text">State</th>${countHeadings}</tr></thead>
+    <tbody>${placeGroups(r => r.state ?? 'Unknown').map(group =>
+      `<tr><th scope="row">${escapeHtml(group[0].state ?? 'Unknown')}</th>${countCells(group)}</tr>`).join('')}</tbody>
+    <tfoot><tr><th scope="row">Total</th>${totals}</tr></tfoot>`;
+  makeSortable(stateTable);
+
+  const countyTable = document.getElementById('county-table');
+  countyTable.innerHTML = `
+    <thead><tr><th scope="col" data-sort="text">County</th><th scope="col" data-sort="text">State</th>${countHeadings}</tr></thead>
+    <tbody>${placeGroups(r => `${r.county}, ${r.state}`).map(group =>
+      `<tr><th scope="row">${escapeHtml(group[0].county ?? 'Unknown')}</th><td>${escapeHtml(group[0].state ?? 'Unknown')}</td>${countCells(group)}</tr>`).join('')}</tbody>
+    <tfoot><tr><th scope="row" colspan="2">Total</th>${totals}</tr></tfoot>`;
+  makeSortable(countyTable);
+}
+
 // ----- Top observers -------------------------------------------------------
 function renderObservers(records) {
   const rows = [...groupBy(records.filter(r => r.stage !== 'unknown'), r => r.user.id).values()]
@@ -557,16 +669,21 @@ function renderObservers(records) {
     if (i === 0 || row.confirmed.length !== rows[i - 1].confirmed.length) place = i + 1;
     return `<tr${i >= TOP_OBSERVERS_SHOWN ? ' class="extra"' : ''}>
       <td class="num">${place}</td>
-      <td>${personHtml(row.user)}</td>
-      <td class="num">${countHtml(row.confirmed.length, idListUrl(row.confirmed))}</td>
-      <td class="num">${countHtml(row.inProgress.length, idListUrl(row.inProgress))}</td>
+      <td data-value="${escapeHtml(row.user.login)}">${personHtml(row.user)}</td>
+      ${countCell(row.confirmed)}
+      ${countCell(row.inProgress)}
     </tr>`;
   }).join('');
 
   const table = document.getElementById('observers-table');
   table.innerHTML = `
-    <thead><tr><th scope="col" class="num">#</th><th scope="col">Observer</th><th scope="col" class="num">Confirmed</th><th scope="col" class="num">In progress</th></tr></thead>
+    <thead><tr>
+      <th scope="col" class="num">#</th><th scope="col" data-sort="text">Observer</th>
+      <th scope="col" class="num" data-sort="number" aria-sort="descending">Confirmed</th><th scope="col" class="num" data-sort="number">In progress</th>
+    </tr></thead>
     <tbody>${body}</tbody>`;
+  // The collapsed list shows the first rows in whatever order the table is sorted.
+  makeSortable(table, sorted => sorted.forEach((row, i) => row.classList.toggle('extra', i >= TOP_OBSERVERS_SHOWN)));
 
   const button = document.getElementById('show-all-observers');
   button.hidden = rows.length <= TOP_OBSERVERS_SHOWN;
@@ -578,24 +695,34 @@ function renderObservers(records) {
 }
 
 // ----- In-progress lists ---------------------------------------------------
+// Values with a rank sort coarsest first (kingdom = "030" ... subspecies = "095"), others alphabetically.
+const fieldValueSortKey = r => (r.rank ? String(100 - RANK_LEVEL[r.rank]).padStart(3, '0') : r.value.toLowerCase());
+
 function observationRows(records) {
   return records.map(r => `<tr>
     <td class="thumb">${photoHtml(r)}</td>
-    <td>${taxonHtml(r.taxon)}</td>
-    <td><code>${escapeHtml(r.value)}</code></td>
+    <td data-value="${escapeHtml(r.taxon?.name ?? '')}">${taxonHtml(r)}</td>
+    <td data-value="${escapeHtml(fieldValueSortKey(r))}"><code>${escapeHtml(r.value)}</code></td>
     <td><a href="${personUrl(r.user.login)}">${escapeHtml(r.user.login)}</a></td>
-    <td>${escapeHtml(r.observedOn ?? 'Unknown')}</td>
+    <td data-value="${escapeHtml(r.observedOn ?? '')}">${escapeHtml(r.observedOn ?? 'Unknown')}</td>
     <td>${escapeHtml(QUALITY_LABELS[r.qualityGrade] ?? r.qualityGrade)}</td>
   </tr>`).join('');
 }
 
-function observationTable(records, emptyMessage) {
-  if (records.length === 0) return `<tbody><tr><td class="zero">${emptyMessage}</td></tr></tbody>`;
-  return `<thead><tr>
-      <th scope="col">Observation</th><th scope="col">Taxon</th><th scope="col">Field value</th>
-      <th scope="col">Observer</th><th scope="col">Observed</th><th scope="col">Quality grade</th>
+// sortedBy names the column ('taxon' or 'value') the records arrive sorted by.
+function observationTable(table, records, emptyMessage, sortedBy) {
+  if (records.length === 0) {
+    table.innerHTML = `<tbody><tr><td class="zero">${emptyMessage}</td></tr></tbody>`;
+    return;
+  }
+  const sorted = column => (column === sortedBy ? ' aria-sort="ascending"' : '');
+  table.innerHTML = `<thead><tr>
+      <th scope="col">Observation</th><th scope="col" data-sort="text"${sorted('taxon')}>Taxon</th>
+      <th scope="col" data-sort="text"${sorted('value')}>Field value</th><th scope="col" data-sort="text">Observer</th>
+      <th scope="col" data-sort="date">Observed</th><th scope="col" data-sort="text">Quality grade</th>
     </tr></thead>
     <tbody>${observationRows(records)}</tbody>`;
+  makeSortable(table);
 }
 
 // Coarsest proposed records first, then alphabetical by taxon.
@@ -609,8 +736,9 @@ function renderQueues(records) {
   const candidates = records.filter(r => r.stage === 'candidate').sort(byRankThenName);
   document.getElementById('pending-heading').textContent = `Awaiting final confirmation (${formatNumber(pending.length)})`;
   document.getElementById('candidate-heading').textContent = `Awaiting ID confirmation (${formatNumber(candidates.length)})`;
-  document.getElementById('pending-table').innerHTML = observationTable(pending, 'Nothing is waiting on final confirmation.');
-  document.getElementById('candidate-table').innerHTML = observationTable(candidates, 'Nothing is waiting on ID help.');
+  observationTable(document.getElementById('pending-table'), pending, 'Nothing is waiting on final confirmation.', 'value');
+  // Candidates have no rank yet, so byRankThenName leaves them in taxon order.
+  observationTable(document.getElementById('candidate-table'), candidates, 'Nothing is waiting on ID help.', 'taxon');
 
   const download = document.getElementById('download-pending');
   download.disabled = pending.length === 0;
@@ -632,12 +760,19 @@ const CSV_COLUMNS = [
   ['observer_name', r => r.user.name],
   ['observed_on', r => r.observedOn],
   ['quality_grade', r => r.qualityGrade],
+  // Place columns use the names from iNaturalist's observation export.
+  ['place_state_name', r => r.state],
+  ['place_county_name', r => r.county],
+  ['place_guess', r => r.placeGuess],
+  ['latitude', r => r.latitude],
+  ['longitude', r => r.longitude],
+  ['coordinates_obscured', r => (r.obscured ? 'true' : 'false')],
 ];
 
 function csvCell(value) {
   let text = String(value ?? '');
-  // Keep spreadsheet apps from treating names that start with = + - @ as formulas.
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  // Keep spreadsheet apps from treating names that start with = + - @ as formulas. Plain numbers like -83.5 are safe.
+  if (/^[=+\-@]/.test(text) && !/^-?\d+(\.\d+)?$/.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
@@ -664,10 +799,17 @@ async function run() {
   const observations = await inatFetchAll('/v2/observations', { [`field:${FIELD_NAME}`]: '', place_id: PLACE_ID, fields: OBS_FIELDS },
     (loaded, total) => setStatus(`Loading observations from iNaturalist… ${formatNumber(loaded)} of ${formatNumber(total)}`));
 
-  const records = observations.map(toRecord);
+  setStatus('Looking up states and counties…');
+  const places = await inatFetchByIds('/v2/places', observations.flatMap(obs => obs.place_ids ?? []), { fields: PLACE_FIELDS });
+  const adminPlaces = new Map(places
+    .filter(place => place.admin_level === STATE_LEVEL || place.admin_level === COUNTY_LEVEL)
+    .map(place => [place.id, place]));
+
+  const records = observations.map(obs => toRecord(obs, adminPlaces));
   renderTiles(records);
   renderRankTables(records);
   renderCharts(records);
+  renderPlaceTables(records);
   renderObservers(records);
   renderQueues(records);
   document.getElementById('download-all').onclick = () => downloadCsv(`smokies-atbi-new-records-${today()}.csv`, records);

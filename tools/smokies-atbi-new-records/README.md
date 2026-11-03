@@ -11,9 +11,12 @@ A small team uses the observation field [New Smokies ATBI record?](https://www.i
 - **Summary tiles:** confirmed new records, records awaiting final confirmation, records awaiting ID confirmation, and the number of observers with confirmed records.
 - **Records by rank:** counts for every field value, split into confirmed and awaiting final confirmation, by the rank of the new record (kingdom through subspecies). Every count links to the matching iNaturalist search.
 - **Confirmed records by group and by year observed:** which kinds of organisms the new records are (insects, fungi, arachnids, ...) and when they were observed.
+- **Records by state and county:** counts for each stage in North Carolina and Tennessee and in each of the park's counties.
 - **Top observers:** a leaderboard of iNaturalist users whose observations became confirmed new records, with how many of theirs are still in progress.
 - **In progress:** the observations awaiting final confirmation and awaiting ID confirmation, with photos. The final-confirmation list can be downloaded as a CSV to send for review.
-- **Download all records (CSV):** every flagged observation with its taxon, observer, date, quality grade, and stage.
+- **Download all records (CSV):** every flagged observation with its taxon, observer, date, quality grade, stage, state, county, locality as entered on iNaturalist (`place_guess`), and coordinates. Place columns use the names from iNaturalist's own observation export.
+
+Click a column heading to sort the state, county, observer, and in-progress tables; click again to reverse the order. In the observation tables, the photo and the taxon name both open the observation, as they do in iNaturalist's Explore grid.
 
 ## How field values map to stages
 
@@ -31,9 +34,11 @@ If a record is later retracted, for example because the observation is re-identi
 
 ## How it uses the iNaturalist API
 
-- **Endpoint:** `GET /v2/observations?field:New Smokies ATBI record?=&place_id=72645` (an empty field value matches any value), paged with `order_by=id&id_above=...`
-- **Fields:** the `fields` parameter requests only the dozen attributes the dashboard uses, about 1 KB per observation instead of roughly 100 KB for a full record. That keeps the page fast and light on iNaturalist's servers.
-- **Requests per load:** one per 200 flagged observations (3 as of October 2026), sent about one second apart.
+- **Endpoints:**
+  - `GET /v2/observations?field:New Smokies ATBI record?=&place_id=72645` (an empty field value matches any value), paged with `order_by=id&id_above=...`
+  - `GET /v2/places/{ids}` for the places those observations fall in (about 80 as of November 2026), to find each one's state and county
+- **Fields:** the `fields` parameter requests only the attributes the dashboard uses, about 1 KB per observation instead of roughly 100 KB for a full record. That keeps the page fast and light on iNaturalist's servers.
+- **Requests per load:** one per 200 flagged observations, plus one per 200 places (4 in all as of November 2026), sent about one second apart.
 - **Sign-in:** not needed. All data is public.
 
 Links to iNaturalist searches add `place_id=72645` and `verifiable=any` so their counts match the dashboard.
@@ -43,6 +48,8 @@ Links to iNaturalist searches add `place_id=72645` and `verifiable=any` so their
 - **Links for combined totals use observation ID lists.** iNaturalist's search can't match several field values at once, so links for totals, groups, years, and observers list the observation IDs instead. Past 400 observations, the link is left off to keep the URL a safe length. (The confirmed-records tile links to the by-rank table for this reason.)
 - **"Year observed," not "year confirmed."** iNaturalist doesn't record when a field value was set, so records are dated by when the organism was observed.
 - **Group** is iNaturalist's iconic taxon. "Other animals" are animals outside the named groups, such as woodlice, centipedes, and land planarians.
+- **States and counties** come from iNaturalist's standard places, which it assigns from each observation's coordinates. They can differ from the locality the observer typed (`place_guess` in the CSV).
+- **Obscured coordinates.** For observations with obscured locations, the CSV's `latitude` and `longitude` are iNaturalist's public, randomized coordinates, and `coordinates_obscured` is `true`.
 - The data reflect the field values as they stand on iNaturalist when the page loads; reload to refresh.
 
 ## Inspiration
