@@ -12,9 +12,9 @@ A small team uses the observation field [New Smokies ATBI record?](https://www.i
 - **Records by rank:** counts for every field value, split into confirmed and awaiting final confirmation, by the rank of the new record (kingdom through subspecies). Every count links to the matching iNaturalist search.
 - **Confirmed records by group and by year observed:** which kinds of organisms the new records are (insects, fungi, arachnids, ...) and when they were observed.
 - **Records by state and county:** counts for each stage in North Carolina and Tennessee and in each of the park's counties.
-- **Map:** every flagged observation as a dot colored by stage, over a USGS topographic map or aerial imagery, with the park boundary outlined. Checkboxes show or hide each stage, and selecting a dot shows the observation's photo, taxon, field value, observer, date, and county.
+- **Map:** every flagged observation except those with obscured locations as a dot colored by stage, over a USGS topographic map or aerial imagery, with the park boundary outlined. Checkboxes show or hide each stage, and selecting a dot shows the observation's photo, taxon, field value, observer, date, and county.
 - **Top observers:** a leaderboard of iNaturalist users whose observations became confirmed new records, with how many of theirs are still in progress.
-- **In progress:** the observations awaiting final confirmation and awaiting ID confirmation, with photos and the county each was observed in. The final-confirmation list can be downloaded as a CSV to send for review.
+- **In progress:** the observations awaiting final confirmation and awaiting ID confirmation, with photos and the state and county each was observed in. The final-confirmation list can be downloaded as a CSV to send for review.
 - **Download all records (CSV):** every flagged observation with its taxon, observer, date, quality grade, stage, state, county, locality as entered on iNaturalist (`place_guess`), and coordinates. Place columns use the names from iNaturalist's own observation export.
 
 Click a column heading to sort the state, county, observer, and in-progress tables; click again to reverse the order. In the observation tables, the photo and the taxon name both open the observation, as they do in iNaturalist's Explore grid.
@@ -58,7 +58,7 @@ The map uses two services besides iNaturalist. Like any website, they see your I
 - **"Year observed," not "year confirmed."** iNaturalist doesn't record when a field value was set, so records are dated by when the organism was observed.
 - **Group** is iNaturalist's iconic taxon. "Other animals" are animals outside the named groups, such as woodlice, centipedes, and land planarians.
 - **States and counties** come from iNaturalist's standard places, which it assigns from each observation's coordinates. They can differ from the locality the observer typed (`place_guess` in the CSV).
-- **Obscured coordinates.** For observations with obscured locations, the map dot and the CSV's `latitude` and `longitude` are iNaturalist's public, randomized coordinates, and `coordinates_obscured` is `true`.
+- **Obscured locations.** Observations whose location is obscured or private, either by the observer (`geoprivacy`) or because the taxon is sensitive (`taxon_geoprivacy`), are left off the map, since their public coordinates are only a random point near the true spot. In the CSV, their `latitude` and `longitude` are those public, randomized coordinates, and `coordinates_obscured` is `true`.
 - **The map is for looking, not for screen readers.** Its dots can't be reached with the keyboard. The tables and the CSV hold the same information.
 - The data reflect the field values as they stand on iNaturalist when the page loads; reload to refresh.
 

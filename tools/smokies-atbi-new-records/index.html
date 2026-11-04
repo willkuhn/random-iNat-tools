@@ -448,7 +448,8 @@ const ICONIC_LABELS = {
 };
 
 // Only the attributes the dashboard uses (v2 API `fields`), which keeps each page of results small.
-const OBS_FIELDS = '(id:!t,observed_on:!t,quality_grade:!t,place_ids:!t,place_guess:!t,location:!t,obscured:!t,' +
+const OBS_FIELDS = '(id:!t,observed_on:!t,quality_grade:!t,place_ids:!t,place_guess:!t,' +
+  'location:!t,obscured:!t,geoprivacy:!t,taxon_geoprivacy:!t,' +
   'taxon:(id:!t,name:!t,rank:!t,rank_level:!t,preferred_common_name:!t,iconic_taxon_name:!t),' +
   'user:(id:!t,login:!t,name:!t,icon_url:!t),ofvs:(field_id:!t,value:!t),photos:(url:!t,attribution:!t))';
 const PLACE_FIELDS = '(id:!t,display_name:!t,admin_level:!t)';
@@ -500,6 +501,8 @@ function toRecord(obs, adminPlaces) {
     latitude,
     longitude,
     obscured: obs.obscured,
+    geoprivacy: obs.geoprivacy,
+    taxonGeoprivacy: obs.taxon_geoprivacy,
   };
 }
 
@@ -702,9 +705,12 @@ function renderPlaceTables(records) {
 }
 
 // ----- Map -----------------------------------------------------------------
+// Obscured by the observer (geoprivacy) or because the taxon is sensitive (taxon_geoprivacy). Private ones have no public coordinates.
+const OBSCURED_GEOPRIVACY = new Set(['obscured', 'private']);
+const isLocationObscured = r => OBSCURED_GEOPRIVACY.has(r.geoprivacy) || OBSCURED_GEOPRIVACY.has(r.taxonGeoprivacy);
+
 function mapPopupHtml(record) {
   const place = record.county ? `<p class="detail">${escapeHtml(record.county)}, ${escapeHtml(record.state ?? '')}</p>` : '';
-  const obscured = record.obscured ? '<p class="detail">Location obscured, so this dot isn\'t the true spot.</p>' : '';
   // Skip the field value when it just repeats the stage ("awaiting ID confirmation").
   const stage = STAGE_LABELS[record.stage];
   const value = record.value.toLowerCase() === stage.toLowerCase() ? '' : `: <code>${escapeHtml(record.value)}</code>`;
@@ -714,7 +720,7 @@ function mapPopupHtml(record) {
       <p>${taxonHtml(record)}</p>
       <p class="detail">${escapeHtml(stage)}${value}</p>
       <p class="detail"><a href="${personUrl(record.user.login)}">${escapeHtml(record.user.login)}</a> · ${escapeHtml(record.observedOn ?? 'date unknown')}</p>
-      ${place}${obscured}
+      ${place}
     </div>
   </div>`;
 }
@@ -745,7 +751,8 @@ function renderMap(records, parkGeometry) {
   Object.values(basemaps)[0].addTo(map);
   L.control.layers(basemaps).addTo(map);
 
-  const mapped = records.filter(r => MAP_STAGES.includes(r.stage) && r.latitude && r.longitude);
+  const staged = records.filter(r => MAP_STAGES.includes(r.stage));
+  const mapped = staged.filter(r => !isLocationObscured(r) && r.latitude && r.longitude);
   if (parkGeometry) {
     // A light casing under the dark line keeps the boundary visible on both basemaps.
     const boundary = L.featureGroup([
@@ -786,13 +793,13 @@ function renderMap(records, parkGeometry) {
   filters.addEventListener('change', showChecked);
   showChecked();
 
-  const obscured = mapped.filter(r => r.obscured).length;
-  const unmapped = records.filter(r => MAP_STAGES.includes(r.stage)).length - mapped.length;
+  const obscured = staged.filter(isLocationObscured).length;
+  const unmapped = staged.length - obscured - mapped.length;
   const notes = [];
   if (obscured) {
     notes.push(obscured === 1
-      ? '1 observation has an obscured location, so iNaturalist puts its dot at random in a square about 20 km across that contains the true spot.'
-      : `${formatNumber(obscured)} observations have obscured locations, so iNaturalist puts each dot at random in a square about 20 km across that contains the true spot.`);
+      ? "1 observation with an obscured location isn't shown."
+      : `${formatNumber(obscured)} observations with obscured locations aren't shown.`);
   }
   if (unmapped) notes.push(`${formatNumber(unmapped)} ${unmapped === 1 ? "observation has no coordinates and isn't" : "observations have no coordinates and aren't"} shown.`);
   note.textContent = notes.join(' ');
@@ -854,15 +861,15 @@ function observationRows(records) {
     <td data-value="${escapeHtml(fieldValueSortKey(r))}"><code>${escapeHtml(r.value)}</code></td>
     <td><a href="${personUrl(r.user.login)}">${escapeHtml(r.user.login)}</a></td>
     <td class="nowrap" data-value="${escapeHtml(r.observedOn ?? '')}">${escapeHtml(r.observedOn ?? 'Unknown')}</td>
-    <td class="nowrap" data-value="${escapeHtml(r.county ?? 'Unknown')}">${countyHtml(r)}</td>
+    <td class="nowrap" data-value="${escapeHtml(`${r.state ?? 'Unknown'}, ${r.county ?? 'Unknown'}`)}">${stateCountyHtml(r)}</td>
     <td>${escapeHtml(QUALITY_LABELS[r.qualityGrade] ?? r.qualityGrade)}</td>
   </tr>`).join('');
 }
 
-function countyHtml(record) {
-  if (!record.county) return '<span class="zero">Unknown</span>';
-  const state = record.state ? `<span class="state-name">${escapeHtml(record.state)}</span>` : '';
-  return `${escapeHtml(record.county)}${state}`;
+// State above county, matching the sort order, which groups each state's counties together.
+function stateCountyHtml(record) {
+  if (!record.state && !record.county) return '<span class="zero">Unknown</span>';
+  return `<span class="state-name">${escapeHtml(record.state ?? 'Unknown state')}</span>${escapeHtml(record.county ?? 'Unknown county')}`;
 }
 
 // sortedBy names the column ('taxon' or 'value') the records arrive sorted by.
@@ -875,7 +882,7 @@ function observationTable(table, records, emptyMessage, sortedBy) {
   table.innerHTML = `<thead><tr>
       <th scope="col">Observation</th><th scope="col" data-sort="text"${sorted('taxon')}>Taxon</th>
       <th scope="col" data-sort="text"${sorted('value')}>Field value</th><th scope="col" data-sort="text">Observer</th>
-      <th scope="col" data-sort="date">Observed</th><th scope="col" data-sort="text">County</th>
+      <th scope="col" data-sort="date">Observed</th><th scope="col" data-sort="text">State and county</th>
       <th scope="col" data-sort="text">Quality grade</th>
     </tr></thead>
     <tbody>${observationRows(records)}</tbody>`;
