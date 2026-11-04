@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Smokies ATBI New Records · random-iNat-tools</title>
 <meta name="description" content="Dashboard of iNaturalist observations flagged as new taxonomic records for the All Taxa Biodiversity Inventory of Great Smoky Mountains National Park.">
+<!-- Leaflet draws the map. Pinned, with integrity hashes matching the ones published at leafletjs.com/download.html. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
 <style>
   :root {
     color-scheme: light dark;
@@ -35,6 +37,7 @@
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body {
     margin: 0 auto;
     max-width: 72rem;
@@ -102,6 +105,30 @@
   @media (min-width: 56rem) { .place-tables { grid-template-columns: 2fr 3fr; } }
   .place-tables tbody th, .place-tables tbody td:not(.num) { white-space: nowrap; }
 
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* Map */
+  .map-filters { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; margin: 0 0 0.6rem; padding: 0; border: 0; }
+  .map-filters label { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+  .swatch { flex: none; width: 12px; height: 12px; border: 1.5px solid #ffffff; border-radius: 50%; box-shadow: 0 0 0 1px var(--border); }
+  /* The park is wide and short, so the map's height follows its width. */
+  #map { height: clamp(18rem, 60vw, 32rem); background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; }
+  #map:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  /* Leaflet's controls and popups, recolored to follow the page's light or dark theme. */
+  .leaflet-container { font: 0.85rem/1.4 var(--font); }
+  .leaflet-container a { color: var(--link); }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--bg); color: var(--text); }
+  .leaflet-popup-content { margin: 0.75rem 1.5rem 0.75rem 0.75rem; font-size: 0.85rem; line-height: 1.4; }
+  .leaflet-container a.leaflet-popup-close-button { color: var(--text-muted); }
+  .leaflet-bar a, .leaflet-bar a:hover, .leaflet-control-layers { color: var(--text); background-color: var(--bg); border-color: var(--border); }
+  .leaflet-bar a:hover { background-color: var(--bg-alt); }
+  .leaflet-container .leaflet-control-attribution { color: var(--text-muted); background: var(--bg); opacity: 0.85; }
+  @media (prefers-color-scheme: dark) { .leaflet-control-layers-toggle { filter: invert(1); } }
+  .map-popup { display: grid; grid-template-columns: 48px 1fr; gap: 0.6rem; align-items: start; min-width: 12rem; }
+  .map-popup img { display: block; width: 48px; height: 48px; object-fit: cover; border-radius: 4px; background: var(--bg-alt); }
+  .map-popup p { margin: 0; }
+  .map-popup .detail { color: var(--text-muted); }
+
   /* Sortable column headings */
   th button.sort {
     padding: 0;
@@ -157,7 +184,8 @@
   }
   .thumb { width: 64px; }
   .thumb img { display: block; width: 48px; height: 48px; object-fit: cover; border-radius: 4px; background: var(--bg-alt); }
-  .common { display: block; color: var(--text-muted); font-size: 0.85rem; }
+  .common, .state-name { display: block; color: var(--text-muted); font-size: 0.85rem; }
+  td.nowrap { white-space: nowrap; }
   tr.extra { display: none; }
   table.show-all tr.extra { display: table-row; }
   .section-head { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: baseline; justify-content: space-between; }
@@ -227,6 +255,17 @@
       </div>
     </section>
 
+    <section id="map-section">
+      <h2>Map</h2>
+      <p class="note">
+        Each dot is one observation; select it for details. The park boundary is outlined.
+        Zoom with the + and − buttons, by pinching on a touch screen, or with the scroll wheel after clicking the map.
+      </p>
+      <fieldset class="map-filters" id="map-filters"><legend class="visually-hidden">Show on the map</legend></fieldset>
+      <div id="map" role="region" aria-label="Map of the flagged observations"></div>
+      <p class="note" id="map-note"></p>
+    </section>
+
     <section id="observers">
       <h2>Top observers</h2>
       <p class="note">People whose observations became confirmed new records for the park. "In progress" counts their observations still awaiting ID or final confirmation.</p>
@@ -257,6 +296,7 @@
   Not affiliated with or endorsed by iNaturalist or the National Park Service.
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
 <script>
 'use strict';
 
@@ -415,6 +455,17 @@ const PLACE_FIELDS = '(id:!t,display_name:!t,admin_level:!t)';
 // iNaturalist's admin_level for the standard state and county places.
 const STATE_LEVEL = 10;
 const COUNTY_LEVEL = 20;
+
+// Stages shown on the map, drawn in this order so the rarer stages sit on top.
+const MAP_STAGES = ['confirmed', 'pending', 'candidate'];
+// Checked as a set for color-blind separation. They stay the same in dark mode because the basemaps stay light.
+const STAGE_COLORS = { confirmed: '#5a8a00', pending: '#6250d6', candidate: '#eda100' };
+// Public-domain basemaps from the USGS National Map. Cached tiles stop at zoom 16; Leaflet enlarges them past that.
+const USGS_ATTRIBUTION = '<a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS The National Map</a>';
+const BASEMAPS = {
+  'Topographic': 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
+  'Aerial imagery': 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',
+};
 
 // Sort a field value into a workflow stage, plus the rank of the record it claims, if any.
 function classify(fieldValue) {
@@ -650,6 +701,104 @@ function renderPlaceTables(records) {
   makeSortable(countyTable);
 }
 
+// ----- Map -----------------------------------------------------------------
+function mapPopupHtml(record) {
+  const place = record.county ? `<p class="detail">${escapeHtml(record.county)}, ${escapeHtml(record.state ?? '')}</p>` : '';
+  const obscured = record.obscured ? '<p class="detail">Location obscured, so this dot isn\'t the true spot.</p>' : '';
+  // Skip the field value when it just repeats the stage ("awaiting ID confirmation").
+  const stage = STAGE_LABELS[record.stage];
+  const value = record.value.toLowerCase() === stage.toLowerCase() ? '' : `: <code>${escapeHtml(record.value)}</code>`;
+  return `<div class="map-popup">
+    ${photoHtml(record)}
+    <div>
+      <p>${taxonHtml(record)}</p>
+      <p class="detail">${escapeHtml(stage)}${value}</p>
+      <p class="detail"><a href="${personUrl(record.user.login)}">${escapeHtml(record.user.login)}</a> · ${escapeHtml(record.observedOn ?? 'date unknown')}</p>
+      ${place}${obscured}
+    </div>
+  </div>`;
+}
+
+// Leaflet needs the map's container to be visible, so this runs after the dashboard is shown.
+function renderMap(records, parkGeometry) {
+  const note = document.getElementById('map-note');
+  if (typeof L === 'undefined') {
+    document.getElementById('map-filters').hidden = true;
+    document.getElementById('map').hidden = true;
+    note.textContent = "The map couldn't load because its library (Leaflet, from cdn.jsdelivr.net) didn't load. The rest of the dashboard works without it.";
+    return;
+  }
+
+  const map = L.map('map', {
+    // Half-step zooms let the park fill more of the map.
+    zoomSnap: 0.5,
+    // Scrolling the page shouldn't zoom the map; the wheel zooms once the map has focus (see below).
+    scrollWheelZoom: false,
+    // On phones, one finger scrolls the page and two fingers move and zoom the map.
+    dragging: !L.Browser.mobile,
+  });
+  map.on('focus', () => map.scrollWheelZoom.enable());
+  map.on('blur', () => map.scrollWheelZoom.disable());
+
+  const basemaps = Object.fromEntries(Object.entries(BASEMAPS).map(([name, url]) =>
+    [name, L.tileLayer(url, { maxNativeZoom: 16, maxZoom: 18, attribution: USGS_ATTRIBUTION })]));
+  Object.values(basemaps)[0].addTo(map);
+  L.control.layers(basemaps).addTo(map);
+
+  const mapped = records.filter(r => MAP_STAGES.includes(r.stage) && r.latitude && r.longitude);
+  if (parkGeometry) {
+    // A light casing under the dark line keeps the boundary visible on both basemaps.
+    const boundary = L.featureGroup([
+      L.geoJSON(parkGeometry, { style: { color: '#ffffff', weight: 4, opacity: 0.8, fill: false }, interactive: false }),
+      L.geoJSON(parkGeometry, { style: { color: '#1f2421', weight: 2, fill: false }, interactive: false }),
+    ]).addTo(map);
+    map.fitBounds(boundary.getBounds(), { padding: [12, 12] });
+  } else {
+    map.fitBounds(mapped.map(r => [Number(r.latitude), Number(r.longitude)]), { padding: [12, 12] });
+  }
+
+  // Canvas draws hundreds of dots quickly, and its tolerance makes each dot easier to hit.
+  const renderer = L.canvas({ tolerance: 6 });
+  const layers = new Map(MAP_STAGES.map(stage => [stage, L.layerGroup(mapped.filter(r => r.stage === stage).map(r =>
+    L.circleMarker([Number(r.latitude), Number(r.longitude)], {
+      renderer, radius: 6, weight: 1.5, color: '#ffffff', fillColor: STAGE_COLORS[stage], fillOpacity: 0.9,
+    })
+      .bindTooltip(escapeHtml(r.taxon?.name ?? 'No ID'), { direction: 'top', offset: [0, -6] })
+      // The top padding keeps an open popup clear of the zoom and basemap buttons.
+      .bindPopup(() => mapPopupHtml(r), { autoPanPaddingTopLeft: [10, 80] })
+      // A tap opens the name label too, and on a touch screen nothing would close it.
+      .on('popupopen', e => e.target.closeTooltip())))]));
+
+  const filters = document.getElementById('map-filters');
+  filters.insertAdjacentHTML('beforeend', MAP_STAGES.map(stage => `<label>
+      <input type="checkbox" value="${stage}" checked>
+      <span class="swatch" style="background: ${STAGE_COLORS[stage]}"></span>
+      ${escapeHtml(STAGE_LABELS[stage])} (${formatNumber(layers.get(stage).getLayers().length)})
+    </label>`).join(''));
+  const showChecked = () => {
+    const checked = new Set([...filters.querySelectorAll('input:checked')].map(input => input.value));
+    // Re-adding every layer in MAP_STAGES order keeps the rarer stages drawn on top.
+    for (const [stage, layer] of layers) {
+      layer.remove();
+      if (checked.has(stage)) layer.addTo(map);
+    }
+  };
+  filters.addEventListener('change', showChecked);
+  showChecked();
+
+  const obscured = mapped.filter(r => r.obscured).length;
+  const unmapped = records.filter(r => MAP_STAGES.includes(r.stage)).length - mapped.length;
+  const notes = [];
+  if (obscured) {
+    notes.push(obscured === 1
+      ? '1 observation has an obscured location, so iNaturalist puts its dot at random in a square about 20 km across that contains the true spot.'
+      : `${formatNumber(obscured)} observations have obscured locations, so iNaturalist puts each dot at random in a square about 20 km across that contains the true spot.`);
+  }
+  if (unmapped) notes.push(`${formatNumber(unmapped)} ${unmapped === 1 ? "observation has no coordinates and isn't" : "observations have no coordinates and aren't"} shown.`);
+  note.textContent = notes.join(' ');
+  note.hidden = notes.length === 0;
+}
+
 // ----- Top observers -------------------------------------------------------
 function renderObservers(records) {
   const rows = [...groupBy(records.filter(r => r.stage !== 'unknown'), r => r.user.id).values()]
@@ -704,9 +853,16 @@ function observationRows(records) {
     <td data-value="${escapeHtml(r.taxon?.name ?? '')}">${taxonHtml(r)}</td>
     <td data-value="${escapeHtml(fieldValueSortKey(r))}"><code>${escapeHtml(r.value)}</code></td>
     <td><a href="${personUrl(r.user.login)}">${escapeHtml(r.user.login)}</a></td>
-    <td data-value="${escapeHtml(r.observedOn ?? '')}">${escapeHtml(r.observedOn ?? 'Unknown')}</td>
+    <td class="nowrap" data-value="${escapeHtml(r.observedOn ?? '')}">${escapeHtml(r.observedOn ?? 'Unknown')}</td>
+    <td class="nowrap" data-value="${escapeHtml(r.county ?? 'Unknown')}">${countyHtml(r)}</td>
     <td>${escapeHtml(QUALITY_LABELS[r.qualityGrade] ?? r.qualityGrade)}</td>
   </tr>`).join('');
+}
+
+function countyHtml(record) {
+  if (!record.county) return '<span class="zero">Unknown</span>';
+  const state = record.state ? `<span class="state-name">${escapeHtml(record.state)}</span>` : '';
+  return `${escapeHtml(record.county)}${state}`;
 }
 
 // sortedBy names the column ('taxon' or 'value') the records arrive sorted by.
@@ -719,7 +875,8 @@ function observationTable(table, records, emptyMessage, sortedBy) {
   table.innerHTML = `<thead><tr>
       <th scope="col">Observation</th><th scope="col" data-sort="text"${sorted('taxon')}>Taxon</th>
       <th scope="col" data-sort="text"${sorted('value')}>Field value</th><th scope="col" data-sort="text">Observer</th>
-      <th scope="col" data-sort="date">Observed</th><th scope="col" data-sort="text">Quality grade</th>
+      <th scope="col" data-sort="date">Observed</th><th scope="col" data-sort="text">County</th>
+      <th scope="col" data-sort="text">Quality grade</th>
     </tr></thead>
     <tbody>${observationRows(records)}</tbody>`;
   makeSortable(table);
@@ -805,6 +962,14 @@ async function run() {
     .filter(place => place.admin_level === STATE_LEVEL || place.admin_level === COUNTY_LEVEL)
     .map(place => [place.id, place]));
 
+  // The park outline for the map, skipped if the map library didn't load.
+  let parkGeometry = null;
+  if (typeof L !== 'undefined') {
+    setStatus('Loading the park boundary…');
+    const park = await inatFetch(`/v2/places/${PLACE_ID}`, { fields: '(id:!t,geometry_geojson:!t)' });
+    parkGeometry = park.results[0]?.geometry_geojson ?? null;
+  }
+
   const records = observations.map(obs => toRecord(obs, adminPlaces));
   renderTiles(records);
   renderRankTables(records);
@@ -817,6 +982,7 @@ async function run() {
   const loadedAt = new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   setStatus(`Loaded ${formatNumber(records.length)} flagged observations from iNaturalist on ${loadedAt}.`);
   document.getElementById('dashboard').hidden = false;
+  renderMap(records, parkGeometry);
 }
 
 run().catch(err => { console.error(err); setStatus(err.message, true); });
