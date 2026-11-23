@@ -178,7 +178,10 @@ async function inatFetch(path, params = {}) {
       continue;
     }
     if (!response.ok) {
-      throw new Error(`iNaturalist API returned ${response.status} ${response.statusText} for ${url.pathname}`);
+      // v2 says what it rejected in the body, e.g. "Unknown user_id foo" or "verifiable must be equal to one of the allowed values".
+      const detail = await response.json()
+        .then(body => (body.errors ?? []).map(e => [e.path, e.message].filter(Boolean).join(' ')).join('; '), () => '');
+      throw new Error(`iNaturalist API returned ${response.status} ${response.statusText} for ${url.pathname}${detail ? `: ${detail}` : ''}`);
     }
     return response.json();
   }
