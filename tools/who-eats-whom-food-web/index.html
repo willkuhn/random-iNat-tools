@@ -1,0 +1,2218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who Eats Whom Food Web · random-iNat-tools</title>
+<meta name="description" content="Food web, flow diagrams, and research-grade progress for iNaturalist observations tagged for the Who Eats Whom project, at every quality grade.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --bg-alt: #f3f5f1;
+    --text: #1f2421;
+    --text-muted: #5d6660;
+    --border: #d6dcd4;
+    --accent: #5a8a00;
+    --accent-text: #ffffff;
+    --bar: #5a8a00;
+    --link: #2f6f9f;
+    --error: #b3261e;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* Organism groups. Any two can sit side by side in the food web, so the three were checked as a set for color-blind separation. */
+    --grp-plants: #1baf7a;
+    --grp-invertebrates: #eb6834;
+    --grp-vertebrates: #2a78d6;
+    --grp-other: #898781;
+    /* Progress toward Who Eats Whom. Always shown with an icon and a label, never color alone. */
+    --status-ready: #0ca30c;
+    --status-ids: #fab219;
+    --status-casual: #d03b3b;
+    --status-tagging: #ec835a;
+    --net-link: rgba(31, 36, 33, 0.32);
+    --net-link-hl: rgba(31, 36, 33, 0.85);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141714;
+      --bg-alt: #1e221e;
+      --text: #e3e7e2;
+      --text-muted: #9aa49c;
+      --border: #39403a;
+      --accent: #8cc63f;
+      --accent-text: #141714;
+      --bar: #6f9f2a;
+      --link: #7fb8e6;
+      --error: #f2867f;
+      --grp-plants: #199e70;
+      --grp-invertebrates: #d95926;
+      --grp-vertebrates: #3987e5;
+      --net-link: rgba(227, 231, 226, 0.3);
+      --net-link-hl: rgba(227, 231, 226, 0.85);
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0 auto;
+    max-width: 72rem;
+    padding: 1rem 1rem 3rem;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 var(--font);
+  }
+  a { color: var(--link); }
+  h1 { margin: 0.5rem 0 0.25rem; font-size: 1.6rem; }
+  h2 { margin: 2.5rem 0 0.5rem; font-size: 1.25rem; }
+  h3 { margin: 1.5rem 0 0.4rem; font-size: 1.05rem; }
+  .lede { margin: 0 0 1.25rem; color: var(--text-muted); max-width: 48rem; }
+  .note { margin: 0.25rem 0 0.75rem; color: var(--text-muted); font-size: 0.9rem; max-width: 48rem; }
+  code { font-size: 0.9em; padding: 0 0.2em; background: var(--bg-alt); border-radius: 3px; overflow-wrap: anywhere; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* Search form */
+  form#params-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+    gap: 0.75rem 1rem;
+    align-items: end;
+    padding: 1rem;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  form#params-form .wide { grid-column: span 2; }
+  @media (max-width: 26rem) { form#params-form .wide { grid-column: auto; } }
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--text-muted); }
+  input, select {
+    width: 100%;
+    min-width: 0;
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--accent); }
+  button {
+    padding: 0.45rem 1.1rem;
+    font: inherit;
+    font-weight: 600;
+    color: var(--accent-text);
+    background: var(--accent);
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: progress; }
+  button.secondary {
+    color: var(--text);
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    font-weight: 500;
+  }
+  button.small { padding: 0.25rem 0.6rem; font-size: 0.85rem; }
+  /* Buttons that read as links, for jumping to a taxon in the food web. */
+  button.linklike {
+    padding: 0;
+    font: inherit;
+    font-weight: inherit;
+    color: var(--link);
+    text-align: left;
+    text-decoration: underline;
+    background: none;
+    border: 0;
+    border-radius: 0;
+  }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  .examples { margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--text-muted); }
+
+  #status { min-height: 1.5em; margin: 1rem 0; color: var(--text-muted); }
+  #status.error { color: var(--error); }
+  .query-summary { margin: 0 0 1rem; }
+
+  /* Summary tiles */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.75rem; }
+  .tile { padding: 0.9rem 1rem; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; }
+  .tile-label { margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+  .tile-value { margin: 0.1rem 0 0.2rem; font-size: 2.2rem; font-weight: 600; line-height: 1.2; }
+  .tile-link { margin: 0; font-size: 0.85rem; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
+
+  /* Progress toward Who Eats Whom: one segmented bar */
+  .status-bar { display: flex; gap: 2px; height: 28px; margin: 0.75rem 0 0.5rem; }
+  .status-seg { min-width: 4px; height: 100%; }
+  .status-seg:first-child { border-radius: 4px 0 0 4px; }
+  .status-seg:last-child { border-radius: 0 4px 4px 0; }
+  .status-seg:only-child { border-radius: 4px; }
+  .status-seg:hover, .status-seg:focus-visible { filter: brightness(1.12); }
+  .status-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.5rem 1.5rem; margin: 0.75rem 0 0; padding: 0; list-style: none; }
+  .status-legend li { display: grid; grid-template-columns: auto 1fr; gap: 0 0.5rem; align-items: start; font-size: 0.9rem; }
+  .status-legend .count { font-weight: 600; }
+  .status-legend .desc { grid-column: 2; color: var(--text-muted); font-size: 0.85rem; }
+  .status-icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%;
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .s-ready { background: var(--status-ready); }
+  .s-ids { background: var(--status-ids); color: #0b0b0b; }
+  .s-casual { background: var(--status-casual); }
+  .s-tagging { background: var(--status-tagging); color: #0b0b0b; }
+  .status-label { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+  .issues { margin: 0.2rem 0 0; padding: 0; list-style: none; color: var(--text-muted); font-size: 0.8rem; }
+
+  /* Filters: one row above everything they scope */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 2rem;
+    align-items: flex-start;
+    margin: 2.5rem 0 0;
+    padding: 0.75rem 1rem;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .filters fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+  .filters legend { padding: 0; margin-bottom: 0.2rem; font-size: 0.85rem; color: var(--text-muted); }
+  .filters .options { display: flex; flex-wrap: wrap; gap: 0.15rem 1rem; }
+  .filters .options label { flex-direction: row; align-items: center; gap: 0.35rem; color: var(--text); font-size: 0.9rem; cursor: pointer; }
+  .filters .group-by select { width: auto; }
+  /* Common / scientific names switch. Both sides are valid choices, so the track keeps one color and the chosen side is bold. */
+  .names-switch { display: flex; flex-direction: column; gap: 0.2rem; }
+  .switch-legend { font-size: 0.85rem; color: var(--text-muted); }
+  .switch-row { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.1rem; font-size: 0.9rem; }
+  .switch-side { color: var(--text-muted); cursor: pointer; user-select: none; }
+  .switch-side.on { color: var(--text); font-weight: 600; }
+  button.switch { position: relative; flex: none; width: 2.6rem; height: 1.4rem; padding: 0; background: var(--accent); border: 0; border-radius: 999px; }
+  button.switch::after { content: ""; position: absolute; top: 0.2rem; left: 0.2rem; width: 1rem; height: 1rem; background: var(--bg); border-radius: 50%; transition: transform 150ms ease; }
+  button.switch[aria-checked="true"]::after { transform: translateX(1.2rem); }
+  @media (prefers-reduced-motion: reduce) { button.switch::after { transition: none; } }
+  .filters .shown { align-self: center; margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+
+  /* Food web */
+  .net-controls { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; align-items: end; margin: 0 0 0.6rem; }
+  .net-controls .search { flex: 1 1 14rem; max-width: 22rem; }
+  .net-controls .search-msg { flex-basis: 100%; order: 3; margin: 0; }
+  .net-controls .search-msg:empty { display: none; }
+  .net-wrap { position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  #net { display: block; width: 100%; height: clamp(22rem, 70vh, 44rem); cursor: grab; touch-action: pan-x pan-y; }
+  #net:active { cursor: grabbing; }
+  .net-wrap:fullscreen { border-radius: 0; }
+  .net-wrap:fullscreen #net { height: 100vh; touch-action: none; }
+  .net-buttons { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
+  .net-buttons button { min-width: 2.2rem; padding: 0.3rem 0.55rem; color: var(--text); background: var(--bg); border: 1px solid var(--border); font-weight: 600; }
+  .net-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 1rem; color: var(--text-muted); text-align: center; }
+  .link { stroke: var(--net-link); marker-end: url(#arrow); }
+  .link.pending { stroke-dasharray: 4 3; }
+  .link.hl { stroke: var(--net-link-hl); marker-end: url(#arrow-hl); }
+  .arrow { fill: var(--net-link); }
+  .arrow-hl { fill: var(--net-link-hl); }
+  .node { cursor: pointer; }
+  .node circle { stroke: var(--bg); stroke-width: 1.5px; }
+  .node.selected circle { stroke: var(--text); stroke-width: 2.5px; }
+  .net-label { fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-linejoin: round; pointer-events: none; }
+  .net-label.off { display: none; }
+  .has-selection .node:not(.hl) { opacity: 0.15; }
+  .has-selection .link:not(.hl) { opacity: 0.06; }
+  .grp-plants { fill: var(--grp-plants); background: var(--grp-plants); }
+  .grp-invertebrates { fill: var(--grp-invertebrates); background: var(--grp-invertebrates); }
+  .grp-vertebrates { fill: var(--grp-vertebrates); background: var(--grp-vertebrates); }
+  .grp-other { fill: var(--grp-other); background: var(--grp-other); }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.3rem 1.25rem; margin: 0.6rem 0 0; padding: 0; list-style: none; font-size: 0.85rem; color: var(--text-muted); }
+  .legend li { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .swatch { flex: none; width: 12px; height: 12px; border-radius: 50%; }
+  .swatch.square { border-radius: 3px; }
+  .line-key { flex: none; width: 26px; height: 0; border-top: 2px solid var(--net-link-hl); }
+  .line-key.pending { border-top-style: dashed; }
+
+  .net-detail { margin: 1rem 0 0; padding: 1rem; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; }
+  .net-detail > p:only-child { margin: 0; color: var(--text-muted); }
+  .detail-head { display: grid; grid-template-columns: auto 1fr auto; gap: 0.75rem; align-items: start; }
+  .detail-head figure { margin: 0; width: 72px; }
+  .detail-head img { display: block; width: 72px; height: 72px; object-fit: cover; border-radius: 6px; background: var(--bg); }
+  .detail-head figcaption { margin-top: 0.2rem; font-size: 0.7rem; line-height: 1.3; color: var(--text-muted); overflow-wrap: anywhere; }
+  .detail-head h3 { margin: 0; }
+  .detail-head p { margin: 0.15rem 0 0; font-size: 0.9rem; }
+  .detail-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0.5rem 2rem; margin-top: 0.5rem; }
+  .detail-lists h4 { margin: 0.75rem 0 0.3rem; font-size: 0.95rem; }
+  .detail-lists ul { margin: 0; padding: 0; list-style: none; max-height: 18rem; overflow-y: auto; }
+  .detail-lists li { display: flex; flex-wrap: wrap; gap: 0 0.5rem; justify-content: space-between; padding: 0.2rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+  .detail-lists li .pair-count { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .detail-lists .empty { color: var(--text-muted); border: 0; }
+
+  /* Flows: Sankey and radial */
+  .flow-controls { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; align-items: end; margin: 0 0 0.75rem; }
+  .flow-controls label select { width: auto; }
+  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .segmented button { padding: 0.35rem 0.9rem; color: var(--text); background: var(--bg); border: 0; border-radius: 0; font-weight: 500; }
+  .segmented button + button { border-left: 1px solid var(--border); }
+  .segmented button[aria-pressed="true"] { color: var(--accent-text); background: var(--accent); font-weight: 600; }
+  #flow-chart { position: relative; min-height: 10rem; }
+  #flow-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .flow-band { opacity: 0.38; }
+  .flow-band:hover, .flow-band.hl { opacity: 0.75; }
+  .flow-node { cursor: default; }
+  .flow-label { fill: var(--text); font-size: 12px; }
+  .flow-count { fill: var(--text-muted); font-size: 11px; }
+  .flow-heading { fill: var(--text-muted); font-size: 12px; font-weight: 600; }
+  .flow-dim .flow-band:not(.hl) { opacity: 0.1; }
+
+  /* Tooltip */
+  .tooltip {
+    position: fixed;
+    z-index: 20;
+    max-width: 18rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    pointer-events: none;
+  }
+  .tooltip strong { font-size: 0.9rem; }
+  .tooltip .muted { color: var(--text-muted); }
+
+  /* Bar lists */
+  .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0 2rem; }
+  @media (max-width: 26rem) { .two-col { grid-template-columns: minmax(0, 1fr); } }
+  .bars { display: grid; gap: 0.3rem; }
+  .bar-row { display: grid; grid-template-columns: minmax(6rem, 12rem) 1fr 3.5rem; gap: 0.6rem; align-items: center; font-size: 0.9rem; }
+  .bar-label { min-width: 0; overflow-wrap: anywhere; }
+  .bar-track { display: block; height: 16px; }
+  .bar { display: block; height: 100%; min-width: 2px; background: var(--bar); border-radius: 0 4px 4px 0; }
+  .bar-row:hover .bar { filter: brightness(1.15); }
+  .bar-value { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Months */
+  .months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 11rem; padding-top: 1.2rem; border-bottom: 1px solid var(--border); }
+  .month { position: relative; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+  .month-bar { display: block; min-height: 2px; background: var(--bar); border-radius: 4px 4px 0 0; }
+  .month.zero .month-bar { background: var(--border); }
+  .month:hover .month-bar, .month:focus-visible .month-bar { filter: brightness(1.15); }
+  .month-max { position: absolute; left: 0; right: 0; margin-bottom: 2px; text-align: center; font-size: 0.8rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .month-labels { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin-top: 0.25rem; text-align: center; font-size: 0.8rem; color: var(--text-muted); }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; }
+  thead th { position: sticky; top: 0; background: var(--bg-alt); vertical-align: bottom; }
+  td.nowrap { white-space: nowrap; }
+  .zero { color: var(--text-muted); }
+  tr.extra { display: none; }
+  table.show-all tr.extra { display: table-row; }
+  th button.sort { padding: 0; font: inherit; font-weight: 600; color: inherit; text-align: inherit; background: none; border: 0; border-radius: 0; }
+  /* Arrows are decoration; aria-sort tells screen readers the order. The second declaration hides them from readers that support it. */
+  th button.sort::after { content: "\00a0↕"; content: "\00a0↕" / ""; color: var(--text-muted); font-weight: 400; }
+  th[aria-sort="ascending"] button.sort::after { content: "\00a0▲"; content: "\00a0▲" / ""; color: inherit; }
+  th[aria-sort="descending"] button.sort::after { content: "\00a0▼"; content: "\00a0▼" / ""; color: inherit; }
+  .obs-cell { display: grid; grid-template-columns: 48px minmax(9rem, 1fr); gap: 0.5rem; align-items: start; }
+  .obs-cell img, .obs-cell .no-photo { display: block; width: 48px; height: 48px; object-fit: cover; border-radius: 4px; background: var(--bg-alt); }
+  .obs-cell .no-photo { display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--text-muted); text-align: center; }
+  .alt-name, .grade { display: block; color: var(--text-muted); font-size: 0.85rem; }
+  .section-head { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: end; justify-content: space-between; margin-bottom: 0.5rem; }
+  .section-head label select { width: auto; }
+  @media (max-width: 30rem) {
+    th, td { padding: 0.4rem 0.35rem; }
+    .obs-cell { grid-template-columns: 40px minmax(7rem, 1fr); }
+    .obs-cell img, .obs-cell .no-photo { width: 40px; height: 40px; }
+  }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Who Eats Whom food web from iNaturalist</h1>
+  <p class="lede">
+    Explore feeding interactions tagged on iNaturalist for the
+    <a href="https://www.inaturalist.org/projects/who-eats-whom">Who Eats Whom</a> project, including the pairs that
+    aren't research grade yet and so don't appear on <a href="https://whoeatswhom.org/">whoeatswhom.org</a>.
+    Narrow the search by observer, project, place, taxon, date, or any other iNaturalist search parameter.
+  </p>
+</header>
+
+<main>
+  <form id="params-form">
+    <!-- Each input's name is the iNaturalist API parameter it sets. -->
+    <label>Observer
+      <input name="user_id" placeholder="login, e.g. willkuhn" autocomplete="off" autocapitalize="none" spellcheck="false">
+    </label>
+    <label>Project
+      <input name="project_id" placeholder="ID or slug" autocomplete="off" autocapitalize="none" spellcheck="false">
+    </label>
+    <label>Place ID
+      <input name="place_id" inputmode="numeric" placeholder="e.g. 45" autocomplete="off">
+    </label>
+    <label>Taxon ID
+      <input name="taxon_id" inputmode="numeric" placeholder="e.g. 47157" autocomplete="off">
+    </label>
+    <label>Observed on or after
+      <input name="d1" type="date">
+    </label>
+    <label>Observed on or before
+      <input name="d2" type="date">
+    </label>
+    <label class="wide">Other search parameters
+      <input id="other-params" placeholder="e.g. month=6,7&amp;iconic_taxa=Insecta" autocomplete="off" autocapitalize="none" spellcheck="false">
+    </label>
+    <button type="submit">Load</button>
+  </form>
+  <p class="examples">
+    Examples:
+    <a href="?user_id=willkuhn">everything willkuhn has tagged</a> ·
+    <a href="?project_id=smokies-atbi">tagged observations in the Smokies ATBI project</a> ·
+    <a href="?place_id=45&amp;taxon_id=47157">butterflies and moths in Tennessee</a>
+  </p>
+
+  <p id="status" role="status" aria-live="polite"></p>
+  <noscript><p>This dashboard needs JavaScript to load data from iNaturalist.</p></noscript>
+
+  <div id="dashboard" hidden>
+    <p class="query-summary" id="query-summary"></p>
+    <section aria-label="Summary">
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <section id="readiness">
+      <h2>On the way to Who Eats Whom</h2>
+      <p class="note">
+        Who Eats Whom shows a pair only once both observations are research grade. These are all the linked pairs
+        found, by how close each is to getting there.
+      </p>
+      <div class="status-bar" id="status-bar"></div>
+      <ul class="status-legend" id="status-legend"></ul>
+    </section>
+
+    <div class="filters" id="filters" role="group" aria-label="Filters for everything below">
+      <fieldset>
+        <legend>Pairs</legend>
+        <div class="options" id="filter-ready"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Feeding type</legend>
+        <div class="options" id="filter-feeding"></div>
+      </fieldset>
+      <label class="group-by">Group taxa by
+        <select id="group-level">
+          <option value="identified">As identified</option>
+          <option value="species" selected>Species</option>
+          <option value="genus">Genus</option>
+          <option value="family">Family</option>
+          <option value="order">Order</option>
+        </select>
+      </label>
+      <div class="names-switch">
+        <span class="switch-legend" id="names-legend">Names</span>
+        <span class="switch-row">
+          <span class="switch-side" data-names="common" aria-hidden="true">Common</span>
+          <button type="button" role="switch" class="switch" id="names-switch" aria-checked="false" aria-labelledby="names-legend names-scientific"></button>
+          <span class="switch-side" data-names="scientific" id="names-scientific">Scientific</span>
+        </span>
+      </div>
+      <p class="shown" id="filter-shown"></p>
+    </div>
+
+    <section id="food-web">
+      <h2>Food web</h2>
+      <p class="note">
+        Each circle is a taxon, sized by how many pairs it's in. Arrows point from the food to the consumer, as on
+        Who Eats Whom, and thicker lines mean more pairs. Dashed lines have no pair ready for Who Eats Whom yet.
+        Select a circle to see what it eats and what eats it, drag to rearrange, and zoom with the buttons,
+        by pinching with two fingers, or with the scroll wheel after clicking the web.
+      </p>
+      <div class="net-controls">
+        <label class="search">Find a taxon
+          <input id="net-search" list="net-names" placeholder="Common or scientific name" autocomplete="off" aria-describedby="net-search-msg">
+          <datalist id="net-names"></datalist>
+        </label>
+        <p class="note search-msg" id="net-search-msg" aria-live="polite"></p>
+      </div>
+      <div class="net-wrap" id="net-wrap">
+        <svg id="net" tabindex="0" role="img" aria-label="Food web of the selected pairs. The same information is in the pair table below."></svg>
+        <div class="net-buttons">
+          <button type="button" id="net-zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+          <button type="button" id="net-zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
+          <button type="button" id="net-fit" title="Show the whole web">Fit</button>
+          <button type="button" id="net-fullscreen" title="Full screen">⤢</button>
+        </div>
+        <p class="net-empty" id="net-empty" hidden></p>
+      </div>
+      <ul class="legend" id="net-legend"></ul>
+      <div class="net-detail" id="net-detail" aria-live="polite"></div>
+      <div class="toolbar">
+        <button type="button" class="secondary" id="download-edges">Download the food web (CSV)</button>
+      </div>
+    </section>
+
+    <section id="flows">
+      <h2>Who eats whom, by group</h2>
+      <p class="note">
+        Food is on the left and consumers are on the right; each band is the pairs between two groups.
+        Taxa identified only above the chosen rank keep their own, coarser name. Hover or focus a band for its count.
+      </p>
+      <div class="flow-controls">
+        <div class="segmented" role="group" aria-label="Diagram style">
+          <button type="button" data-flow-view="sankey" aria-pressed="true">Sankey</button>
+          <button type="button" data-flow-view="radial" aria-pressed="false">Radial</button>
+        </div>
+        <label>Group food by <select id="flow-food-rank"></select></label>
+        <label>Group consumers by <select id="flow-eater-rank"></select></label>
+        <label>Show the top <select id="flow-top">
+          <option>5</option><option>8</option><option selected>12</option><option>20</option><option>30</option>
+        </select></label>
+      </div>
+      <div id="flow-chart"></div>
+    </section>
+
+    <div class="two-col">
+      <section id="top-eaters-section">
+        <h2>Consumers with the most foods</h2>
+        <p class="note" id="top-eaters-note"></p>
+        <div class="bars" id="top-eaters"></div>
+      </section>
+      <section id="top-foods-section">
+        <h2>Foods with the most consumers</h2>
+        <p class="note" id="top-foods-note"></p>
+        <div class="bars" id="top-foods"></div>
+      </section>
+    </div>
+    <div class="two-col">
+      <section id="feeding-section">
+        <h2>Pairs by feeding type</h2>
+        <p class="note">From the field “Is observation one of these special types of feeding?”</p>
+        <div class="bars" id="feeding-bars"></div>
+      </section>
+      <section id="month-section">
+        <h2>Pairs by month observed</h2>
+        <p class="note">All years combined. Hover or focus a month for its count.</p>
+        <div class="months" id="month-chart"></div>
+        <div class="month-labels" aria-hidden="true">
+          <span>J</span><span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span>
+        </div>
+      </section>
+    </div>
+
+    <section id="pairs">
+      <h2 id="pairs-heading">Pairs</h2>
+      <div class="section-head">
+        <label>Show
+          <select id="pairs-status">
+            <option value="">Every status</option>
+          </select>
+        </label>
+        <button type="button" class="secondary" id="download-pairs">Download these pairs (CSV)</button>
+      </div>
+      <div class="table-wrap"><table id="pairs-table"></table></div>
+      <div class="toolbar"><button type="button" class="secondary" id="pairs-more" hidden></button></div>
+    </section>
+
+    <section id="problems">
+      <h2 id="problems-heading">Tagged observations that couldn't be paired</h2>
+      <p class="note">
+        These have the Who Eats Whom role field but no usable link to a partner. The filters above don't apply here.
+        Pairs that are linked but need a fix, such as a link that goes only one way, are in the pair table with the status
+        <a href="#pairs" id="show-tagging">Tagging to check</a>.
+      </p>
+      <div class="table-wrap"><table id="problems-table"></table></div>
+    </section>
+  </div>
+</main>
+
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+<footer>
+  Part of <a href="https://github.com/willkuhn/random-iNat-tools">random-iNat-tools</a>
+  (<a href="https://github.com/willkuhn/random-iNat-tools/tree/main/tools/who-eats-whom-food-web">docs &amp; source</a>).
+  Data from the <a href="https://api.inaturalist.org/v2/docs/">iNaturalist API</a>; observations and media belong to their creators.
+  Not affiliated with or endorsed by iNaturalist or Who Eats Whom.
+</footer>
+
+<!-- D3 draws the food web and the flow diagrams. Pinned, with the integrity hash jsDelivr publishes for this file. -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha256-8glLv2FBs1lyLE/kVOtsSw8OQswQzHr5IfwVj864ZTk=" crossorigin="anonymous"></script>
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// iNaturalist API client (v2: https://api.inaturalist.org/v2/docs/)
+// Follows https://www.inaturalist.org/pages/api+recommended+practices:
+// about 1 request per second, back off on HTTP 429, largest page size,
+// and no paging past the 10,000-result ceiling.
+// v2 returns only each record's uuid unless `fields` lists the attributes you want,
+// e.g. fields: '(id:!t,taxon:(name:!t))'.
+// Keep this block identical across tools so fixes can be copied between them.
+// ---------------------------------------------------------------------------
+const INAT_API = 'https://api.inaturalist.org';
+const MIN_REQUEST_INTERVAL_MS = 1000;
+const RATE_LIMIT_BACKOFF_MS = 10000;
+const MAX_RETRIES = 3;
+const MAX_PER_PAGE = 200;
+const MAX_RESULTS = 10000;
+// Most records one comma-separated ID lookup like /v2/taxa/1,2,3 returns. The v2 docs don't list these;
+// they were measured in October 2026. /v2/places silently stops at 200, and /v2/users takes one ID at a time.
+// v2 has no identifications search, so identifications still come from v1.
+const MAX_IDS_PER_REQUEST = { '/v1/identifications': 30, '/v2/observations': 200, '/v2/places': 200, '/v2/projects': 10, '/v2/taxa': 30 };
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Slots are reserved synchronously, so requests fired concurrently still go out one per interval.
+let nextRequestAt = 0;
+function waitForRequestSlot() {
+  const now = Date.now();
+  const slot = Math.max(now, nextRequestAt);
+  nextRequestAt = slot + MIN_REQUEST_INTERVAL_MS;
+  return sleep(slot - now);
+}
+
+// GET an API path, e.g. inatFetch('/v2/observations', {taxon_id: 47157, per_page: 0}).
+// Params set to undefined or null are left out; an empty string is sent (e.g. `field:Name=` matches any value).
+async function inatFetch(path, params = {}) {
+  const url = new URL(INAT_API + path);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) url.searchParams.set(key, value);
+  }
+  for (let attempt = 0; ; attempt++) {
+    await waitForRequestSlot();
+    const response = await fetch(url);
+    if (response.status === 429 && attempt < MAX_RETRIES) {
+      // Pause every queued request, not just this one, and wait longer on each retry.
+      const backoff = RATE_LIMIT_BACKOFF_MS * 2 ** attempt;
+      nextRequestAt = Math.max(nextRequestAt, Date.now() + backoff);
+      setStatus(`iNaturalist asked us to slow down. Retrying in ${backoff / 1000} seconds…`);
+      continue;
+    }
+    if (!response.ok) {
+      // v2 says what it rejected in the body, e.g. "Unknown user_id foo" or "verifiable must be equal to one of the allowed values".
+      const detail = await response.json()
+        .then(body => (body.errors ?? []).map(e => [e.path, e.message].filter(Boolean).join(' ')).join('; '), () => '');
+      throw new Error(`iNaturalist API returned ${response.status} ${response.statusText} for ${url.pathname}${detail ? `: ${detail}` : ''}`);
+    }
+    return response.json();
+  }
+}
+
+// Fetch every result of a search by walking id_above, as iNat recommends instead of deep paging.
+// Only for endpoints that accept id_above and order_by=id: /v2/observations, /v2/taxa, /v1/identifications.
+// Refuses searches over MAX_RESULTS so users narrow their filters or use an export instead.
+async function inatFetchAll(path, params = {}, onProgress = () => {}) {
+  const results = [];
+  let idAbove;
+  let total;
+  for (;;) {
+    const data = await inatFetch(path, { ...params, per_page: MAX_PER_PAGE, order_by: 'id', order: 'asc', id_above: idAbove });
+    if (total === undefined) {
+      total = data.total_results;
+      if (total > MAX_RESULTS) {
+        throw new Error(`This search matches ${formatNumber(total)} records, more than the ${formatNumber(MAX_RESULTS)} this tool will fetch. ` +
+          'Add filters to narrow it down, or use iNaturalist\'s observation export (https://www.inaturalist.org/observations/export) for large datasets.');
+      }
+    }
+    results.push(...data.results);
+    onProgress(results.length, total);
+    if (data.results.length < MAX_PER_PAGE) return results;
+    idAbove = data.results[data.results.length - 1].id;
+  }
+}
+
+// Look up records by ID in as few requests as possible, e.g. inatFetchByIds('/v2/taxa', [1, 2, 3], {fields: '(name:!t)'}).
+// /v2/observations/{...} only accepts UUIDs, so observation IDs go in the search's `id` parameter instead.
+async function inatFetchByIds(path, ids, params = {}) {
+  const batchSize = MAX_IDS_PER_REQUEST[path];
+  if (!batchSize) throw new Error(`${path} doesn't support looking up several IDs at once`);
+  const unique = [...new Set(ids)];
+  const results = [];
+  for (let i = 0; i < unique.length; i += batchSize) {
+    const batch = unique.slice(i, i + batchSize).join(',');
+    const data = path === '/v2/observations'
+      ? await inatFetch(path, { ...params, id: batch, per_page: batchSize })
+      : await inatFetch(`${path}/${batch}`, params);
+    results.push(...data.results);
+  }
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Page helpers
+// ---------------------------------------------------------------------------
+const form = document.getElementById('params-form');
+const otherParamsInput = document.getElementById('other-params');
+const statusEl = document.getElementById('status');
+
+function setStatus(message, isError = false) {
+  statusEl.textContent = message;
+  statusEl.classList.toggle('error', isError);
+}
+
+const formatNumber = n => Number(n).toLocaleString();
+
+// Use for any API-provided text inserted with innerHTML (names, descriptions, etc.).
+function escapeHtml(text) {
+  return String(text ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+}
+
+// Parameters the tool sets itself. Everything else in the page URL is passed to the iNaturalist API as is.
+const RESERVED_PARAMS = new Set(['fields', 'per_page', 'page', 'order', 'order_by', 'id_above', 'only_id']);
+// Display settings kept in the URL so shared links look the same. They aren't sent to iNaturalist.
+const VIEW_PARAMS = new Set(['names']);
+const namedInputs = new Set([...form.elements].map(field => field.name).filter(Boolean));
+
+// Settings live in the URL so every result can be bookmarked and shared. Parameters without
+// their own input go in the "Other search parameters" box.
+function readParamsIntoForm(params) {
+  const other = new URLSearchParams();
+  for (const [key, value] of params) {
+    if (namedInputs.has(key)) form.elements[key].value = value;
+    // A date box drops values it can't show, like d1=2024, so those go in the other box instead.
+    if (namedInputs.has(key) && form.elements[key].value === value) continue;
+    if (namedInputs.has(key)) form.elements[key].value = '';
+    if (!RESERVED_PARAMS.has(key) && !VIEW_PARAMS.has(key)) other.append(key, value);
+  }
+  otherParamsInput.value = [...other].map(([key, value]) => `${key}=${value}`).join('&');
+}
+
+form.addEventListener('submit', event => {
+  event.preventDefault();
+  const params = new URLSearchParams();
+  for (const [key, value] of new FormData(form)) {
+    if (String(value).trim() !== '') params.set(key, String(value).trim());
+  }
+  const other = new URLSearchParams(otherParamsInput.value.trim().replace(/^\?/, ''));
+  for (const [key, value] of other) {
+    if (key.trim() && !RESERVED_PARAMS.has(key.trim())) params.set(key.trim(), value.trim());
+  }
+  // A new search keeps the current display settings.
+  for (const [key, value] of new URLSearchParams(location.search)) {
+    if (VIEW_PARAMS.has(key) && !params.has(key)) params.set(key, value);
+  }
+  location.search = params.toString();
+});
+
+// ---------------------------------------------------------------------------
+// Tool logic
+// ---------------------------------------------------------------------------
+// Who Eats Whom's observation fields and project (https://www.inaturalist.org/projects/who-eats-whom).
+const ROLE_FIELD_ID = 12795;
+const ROLE_FIELD_NAME = 'ID meant for "eater" or organism being eaten?';
+const PARTNER_FIELD_ID = 12796;
+const FEEDING_FIELD_ID = 16376;
+const WEW_PROJECT_ID = 41347;
+const ROLE_PARAM = `field:${ROLE_FIELD_NAME}`;
+// iNat's website double-encodes observation field names in search URLs; this matches the links it generates itself.
+const ROLE_WEB_PARAM = 'field:' + encodeURIComponent(new URLSearchParams([['', ROLE_FIELD_NAME.toLowerCase()]]).toString().slice(1));
+
+// Lists of observation IDs go into links; past this many the URL gets too long to be safe.
+const MAX_IDS_IN_LINK = 400;
+const PAIRS_SHOWN = 50;
+const TOP_SHOWN = 12;
+// Ranked taxa looked up per request. /v2/taxa?id=... returns at most 200 results per page.
+const TAXA_PER_LOOKUP = 200;
+const LIFE_TAXON_ID = 48460;
+
+// Ranks the dashboard can group by, coarsest first, with iNat's rank_level for each.
+const GROUP_RANKS = [['kingdom', 70], ['phylum', 60], ['class', 50], ['order', 40], ['family', 30], ['genus', 20], ['species', 10]];
+const RANK_LEVEL = Object.fromEntries(GROUP_RANKS);
+
+const OBS_FIELDS = '(id:!t,uuid:!t,quality_grade:!t,captive:!t,observed_on:!t,project_ids:!t,location:!t,obscured:!t,' +
+  'taxon:(id:!t,name:!t,rank:!t,rank_level:!t,preferred_common_name:!t,ancestor_ids:!t),' +
+  'user:(id:!t,login:!t),ofvs:(field_id:!t,value:!t),photos:(url:!t,attribution:!t))';
+const TAXON_FIELDS = '(id:!t,name:!t,rank:!t,rank_level:!t,preferred_common_name:!t)';
+
+// Organism groups, as on Who Eats Whom, plus "other" for protists, bacteria, and observations with no ID.
+const GROUPS = {
+  plants: 'Plants & fungi',
+  invertebrates: 'Invertebrates',
+  vertebrates: 'Vertebrates',
+  other: 'Other or unidentified',
+};
+const PLANTAE = 47126;
+const FUNGI = 47170;
+const ANIMALIA = 1;
+const VERTEBRATA = 355675;
+
+// Feeding types, from the field "Is observation one of these special types of feeding?".
+// Older values ("Pollination", "Scavenging") are folded into the current ones.
+const FEEDING = {
+  general: 'Predation or herbivory',
+  nectar: 'Nectar or pollen feeding',
+  parasitism: 'Parasitism',
+  scavenging: 'Scavenging or decomposition',
+  none: 'Not given',
+};
+
+// Where each pair stands, in the order they're shown.
+const STATUS = {
+  ready: { label: 'Ready for Who Eats Whom', icon: '✓', desc: 'Both observations are research grade, in the project, and linked to each other.' },
+  ids: { label: 'Waiting on research grade', icon: '…', desc: 'Tagged and linked; one or both observations still need ID agreement.' },
+  casual: { label: 'Casual', icon: '✕', desc: 'One or both observations are casual (for example captive or cultivated), so Who Eats Whom won’t use the pair.' },
+  tagging: { label: 'Tagging to check', icon: '!', desc: 'A link goes only one way, an observation has no role, or one isn’t in the Who Eats Whom project.' },
+};
+const STATUS_ORDER = ['ready', 'ids', 'casual', 'tagging'];
+
+const GRADE_LABELS = { research: 'Research grade', needs_id: 'Needs ID', casual: 'Casual' };
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+const observationUrl = id => `https://www.inaturalist.org/observations/${id}`;
+const taxonUrl = id => `https://www.inaturalist.org/taxa/${id}`;
+const personUrl = login => `https://www.inaturalist.org/people/${encodeURIComponent(login)}`;
+const capitalize = text => text.charAt(0).toUpperCase() + text.slice(1);
+const today = () => new Date().toISOString().slice(0, 10);
+const plural = (n, one, many = `${one}s`) => `${formatNumber(n)} ${n === 1 ? one : many}`;
+
+function idListUrl(ids) {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0 || unique.length > MAX_IDS_IN_LINK) return null;
+  return `https://www.inaturalist.org/observations?id=${unique.join(',')}&verifiable=any`;
+}
+const pairObsIds = pairs => pairs.flatMap(p => [p.eater.id, p.food.id]);
+
+function groupBy(items, keyOf) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = keyOf(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return groups;
+}
+
+// ----- Reading the Who Eats Whom fields ------------------------------------
+const fieldValue = (obs, fieldId) => obs.ofvs?.find(ofv => ofv.field_id === fieldId)?.value;
+
+function roleOf(obs) {
+  const value = (fieldValue(obs, ROLE_FIELD_ID) ?? '').trim().toLowerCase();
+  if (value === 'eater') return 'eater';
+  // "organism being eaten", and the older "thing being eaten".
+  if (value.includes('eaten')) return 'food';
+  return null;
+}
+
+function feedingKind(value) {
+  const text = (value ?? '').trim().toLowerCase();
+  if (!text) return 'none';
+  if (text.startsWith('no')) return 'general';
+  if (/nectar|pollen|pollinat/.test(text)) return 'nectar';
+  if (text.includes('parasit')) return 'parasitism';
+  if (/scaveng|decompos/.test(text)) return 'scavenging';
+  return 'none';
+}
+
+// Partner URLs may point at any iNaturalist network site (inaturalist.ca, uk.inaturalist.org, ...) and use
+// the observation's ID or UUID. Several are usually joined with " / ", but any separator works.
+const PARTNER_REF = /\/observations\/(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+function partnerRefs(obs) {
+  const value = fieldValue(obs, PARTNER_FIELD_ID) ?? '';
+  const refs = [...value.matchAll(PARTNER_REF)].map(match => match[1].toLowerCase());
+  // A bare observation ID instead of a URL.
+  if (refs.length === 0 && /^\s*\d{4,}\s*$/.test(value)) refs.push(value.trim());
+  return [...new Set(refs)];
+}
+const isUuid = ref => ref.includes('-');
+
+function groupOf(taxon) {
+  const ancestors = taxon?.ancestor_ids ?? [];
+  if (ancestors.includes(PLANTAE) || ancestors.includes(FUNGI)) return 'plants';
+  if (ancestors.includes(VERTEBRATA)) return 'vertebrates';
+  if (ancestors.includes(ANIMALIA)) return 'invertebrates';
+  return 'other';
+}
+
+// ----- Loading ---------------------------------------------------------------
+async function loadObservations(apiParams) {
+  const seeds = await inatFetchAll('/v2/observations', { [ROLE_PARAM]: '', ...apiParams, fields: OBS_FIELDS },
+    (loaded, total) => setStatus(`Loading tagged observations from iNaturalist… ${formatNumber(loaded)} of ${formatNumber(total)}`));
+
+  const byId = new Map(seeds.map(obs => [obs.id, obs]));
+  const byUuid = new Map(seeds.map(obs => [obs.uuid, obs]));
+  // Partners outside the search (another observer, place, or project) are looked up by ID.
+  const refs = [...new Set(seeds.flatMap(partnerRefs))];
+  const missingIds = refs.filter(ref => !isUuid(ref) && !byId.has(Number(ref))).map(Number);
+  const missingUuids = refs.filter(ref => isUuid(ref) && !byUuid.has(ref));
+  let extra = [];
+  if (missingIds.length || missingUuids.length) {
+    setStatus(`Loading ${plural(missingIds.length + missingUuids.length, 'partner observation')} from outside the search…`);
+    extra = await inatFetchByIds('/v2/observations', missingIds, { fields: OBS_FIELDS });
+    // UUIDs go in the path instead; this is rare.
+    for (let i = 0; i < missingUuids.length; i += 30) {
+      const data = await inatFetch(`/v2/observations/${missingUuids.slice(i, i + 30).join(',')}`, { fields: OBS_FIELDS });
+      extra.push(...data.results);
+    }
+    for (const obs of extra) {
+      byId.set(obs.id, obs);
+      byUuid.set(obs.uuid, obs);
+    }
+  }
+  return { seeds, extra, byId, byUuid };
+}
+
+// Names and ranks for every taxon the observations fall in, so taxa can be grouped by family, order, and so on.
+// Only ranked ancestors (kingdom, phylum, ..., species) are fetched, and only ones not already known.
+async function loadTaxonomy(observations) {
+  const taxa = new Map();
+  const addTaxon = t => taxa.set(t.id, { id: t.id, name: t.name, rank: t.rank, rankLevel: t.rank_level, common: t.preferred_common_name ?? null });
+  for (const obs of observations) if (obs.taxon) addTaxon(obs.taxon);
+  const needed = [...new Set(observations.flatMap(obs => obs.taxon?.ancestor_ids ?? []))]
+    .filter(id => id !== LIFE_TAXON_ID && !taxa.has(id));
+  const requests = Math.ceil(needed.length / TAXA_PER_LOOKUP);
+  for (let i = 0; i < needed.length; i += TAXA_PER_LOOKUP) {
+    setStatus(`Looking up higher taxa… ${i / TAXA_PER_LOOKUP + 1} of ${requests}`);
+    const data = await inatFetch('/v2/taxa', {
+      id: needed.slice(i, i + TAXA_PER_LOOKUP).join(','),
+      rank: GROUP_RANKS.map(([rank]) => rank).join(','),
+      per_page: TAXA_PER_LOOKUP,
+      fields: TAXON_FIELDS,
+    });
+    data.results.forEach(addTaxon);
+  }
+  return taxa;
+}
+
+// ----- Pairs -----------------------------------------------------------------
+// One pair per two observations that link to each other (in either direction). The role field says which is the
+// eater; if only one side has it, the other side is the opposite.
+function buildPairs(seeds, byId, byUuid) {
+  const resolve = ref => (isUuid(ref) ? byUuid.get(ref) : byId.get(Number(ref)));
+  const linkedTo = new Map();
+  const linksOf = obs => {
+    if (!linkedTo.has(obs.id)) linkedTo.set(obs.id, new Set(partnerRefs(obs).map(resolve).filter(Boolean).map(o => o.id)));
+    return linkedTo.get(obs.id);
+  };
+  const pairs = new Map();
+  const problems = [];
+  const conflicts = new Set();
+
+  for (const obs of seeds) {
+    const refs = partnerRefs(obs);
+    if (refs.length === 0) {
+      problems.push({ obs, kind: 'no-link', detail: fieldValue(obs, PARTNER_FIELD_ID) ?? '' });
+      continue;
+    }
+    for (const ref of refs) {
+      const partner = resolve(ref);
+      if (!partner) {
+        problems.push({ obs, kind: 'not-found', detail: ref });
+        continue;
+      }
+      if (partner.id === obs.id) {
+        problems.push({ obs, kind: 'self', detail: ref });
+        continue;
+      }
+      const key = [obs.id, partner.id].sort((a, b) => a - b).join('-');
+      if (pairs.has(key) || conflicts.has(key)) continue;
+      const sides = assignRoles(obs, partner);
+      if (!sides) {
+        conflicts.add(key);
+        problems.push({ obs, kind: 'same-role', detail: ref, partner });
+        continue;
+      }
+      pairs.set(key, makePair(key, sides.eater, sides.food, linksOf));
+    }
+  }
+  return { pairs: [...pairs.values()], problems };
+}
+
+function assignRoles(a, b) {
+  const roleA = roleOf(a);
+  const roleB = roleOf(b);
+  if (roleA === 'eater' && roleB !== 'eater') return { eater: a, food: b };
+  if (roleA === 'food' && roleB !== 'food') return { eater: b, food: a };
+  if (!roleA && roleB === 'eater') return { eater: b, food: a };
+  if (!roleA && roleB === 'food') return { eater: a, food: b };
+  return null;
+}
+
+function makePair(key, eater, food, linksOf) {
+  const issues = [];
+  let tagging = false;
+  if (!linksOf(eater).has(food.id)) { issues.push('The eater doesn’t link to the food'); tagging = true; }
+  if (!linksOf(food).has(eater.id)) { issues.push('The food doesn’t link to the eater'); tagging = true; }
+  for (const [side, obs] of [['eater', eater], ['food', food]]) {
+    if (!roleOf(obs)) { issues.push(`The ${side} has no eater/eaten role, so its role was inferred from its partner`); tagging = true; }
+    if (!obs.project_ids?.includes(WEW_PROJECT_ID)) { issues.push(`The ${side} isn’t in the Who Eats Whom project`); tagging = true; }
+  }
+  let casual = false;
+  let needsId = false;
+  for (const [side, obs] of [['eater', eater], ['food', food]]) {
+    if (obs.quality_grade === 'casual') {
+      issues.push(`The ${side} is casual${obs.captive ? ' (captive or cultivated)' : ''}`);
+      casual = true;
+    } else if (obs.quality_grade !== 'research') {
+      issues.push(`The ${side} needs ID`);
+      needsId = true;
+    }
+  }
+  const status = tagging ? 'tagging' : casual ? 'casual' : needsId ? 'ids' : 'ready';
+  const feedingValue = fieldValue(eater, FEEDING_FIELD_ID) ?? fieldValue(food, FEEDING_FIELD_ID);
+  return {
+    key,
+    eater,
+    food,
+    feeding: feedingKind(feedingValue),
+    feedingValue: feedingValue ?? '',
+    observedOn: eater.observed_on ?? food.observed_on ?? null,
+    status,
+    issues,
+  };
+}
+
+// ----- Taxa and grouping -----------------------------------------------------
+let taxonomy = new Map();
+
+// The taxon an observation counts as at a grouping level. Taxa identified more coarsely than the level keep their own taxon.
+function groupTaxon(obsTaxon, level) {
+  if (!obsTaxon) return { key: 'none', info: null };
+  const own = { key: `t${obsTaxon.id}`, info: taxonomy.get(obsTaxon.id) };
+  if (level === 'identified' || obsTaxon.rank_level >= RANK_LEVEL[level]) return own;
+  for (const id of [...(obsTaxon.ancestor_ids ?? [])].reverse()) {
+    const info = taxonomy.get(id);
+    if (info?.rank === level) return { key: `t${id}`, info };
+  }
+  return own;
+}
+
+// Taxa without a common name always show their scientific name, whichever way the Names switch is set.
+const showsCommon = info => state.names === 'common' && Boolean(info?.common);
+const isItalic = info => info && info.rankLevel <= 20;
+// Italic when the name shown is a scientific name at genus rank or below.
+const shownItalic = info => !showsCommon(info) && isItalic(info);
+
+// Plain-text name for diagram labels, in the style the Names switch picks.
+function taxonLabel(info) {
+  if (!info) return 'Unidentified';
+  return showsCommon(info) ? capitalize(info.common) : info.name;
+}
+
+// Scientific name, italic for genus and below, with the rank first above species ("Family Asteraceae").
+function sciNameHtml(info) {
+  const name = isItalic(info) ? `<i>${escapeHtml(info.name)}</i>` : escapeHtml(info.name);
+  return info.rankLevel > 10 ? `${escapeHtml(capitalize(info.rank))} ${name}` : name;
+}
+
+// The name the Names switch picks, for lists, tables, and tooltips.
+function primaryNameHtml(info) {
+  if (!info) return 'Unidentified';
+  return showsCommon(info) ? escapeHtml(capitalize(info.common)) : sciNameHtml(info);
+}
+
+// The other name, shown smaller where there's room; empty when the taxon has only a scientific name.
+function secondaryNameHtml(info) {
+  if (!info?.common) return '';
+  return showsCommon(info) ? sciNameHtml(info) : escapeHtml(capitalize(info.common));
+}
+
+const infoOf = taxon => (taxon
+  ? taxonomy.get(taxon.id) ?? { id: taxon.id, name: taxon.name, rank: taxon.rank, rankLevel: taxon.rank_level, common: taxon.preferred_common_name ?? null }
+  : null);
+
+// The observation's taxon, linked to the observation as in iNaturalist's Explore grid, with the other name underneath.
+function obsTaxonHtml(obs) {
+  const info = infoOf(obs.taxon);
+  const alt = secondaryNameHtml(info);
+  return `<a href="${observationUrl(obs.id)}">${primaryNameHtml(info)}</a>${alt ? `<span class="alt-name">${alt}</span>` : ''}`;
+}
+
+function obsPhotoHtml(obs) {
+  const photo = obs.photos?.[0];
+  if (!photo) return `<a class="no-photo" href="${observationUrl(obs.id)}">No photo</a>`;
+  return `<a href="${observationUrl(obs.id)}"><img src="${escapeHtml(photo.url)}" alt="Observation ${obs.id}" title="${escapeHtml(photo.attribution)}" width="48" height="48" loading="lazy"></a>`;
+}
+
+function obsCellHtml(obs) {
+  return `<div class="obs-cell">${obsPhotoHtml(obs)}<div>${obsTaxonHtml(obs)}<span class="grade">${escapeHtml(GRADE_LABELS[obs.quality_grade] ?? obs.quality_grade)}</span></div></div>`;
+}
+
+function statusLabelHtml(status) {
+  const s = STATUS[status];
+  return `<span class="status-label"><span class="status-icon s-${status}" aria-hidden="true">${s.icon}</span>${escapeHtml(s.label)}</span>`;
+}
+
+// ----- Tooltip -------------------------------------------------------------
+const tooltip = document.getElementById('tooltip');
+
+// Shows the tooltip near the pointer, or near the element when it has keyboard focus.
+function showTooltip(html, event) {
+  // In full screen only the full-screen element is drawn, so the tooltip moves inside it.
+  const host = document.fullscreenElement ?? document.body;
+  if (tooltip.parentElement !== host) host.append(tooltip);
+  tooltip.innerHTML = html;
+  tooltip.hidden = false;
+  let x;
+  let y;
+  if (event.clientX !== undefined && event.type !== 'focus' && event.type !== 'focusin') {
+    x = event.clientX + 14;
+    y = event.clientY + 14;
+  } else {
+    const box = event.target.getBoundingClientRect();
+    x = box.left + box.width / 2;
+    y = box.bottom + 8;
+  }
+  const { width, height } = tooltip.getBoundingClientRect();
+  tooltip.style.left = `${Math.max(8, Math.min(x, window.innerWidth - width - 8))}px`;
+  tooltip.style.top = `${y + height > window.innerHeight - 8 ? Math.max(8, y - height - 28) : y}px`;
+}
+const hideTooltip = () => { tooltip.hidden = true; };
+
+// Hover and keyboard focus both show the element's tooltip.
+function addTooltip(element, htmlOf) {
+  element.addEventListener('pointermove', event => showTooltip(htmlOf(), event));
+  element.addEventListener('pointerleave', hideTooltip);
+  element.addEventListener('focusin', event => showTooltip(htmlOf(), event));
+  element.addEventListener('focusout', hideTooltip);
+}
+
+// ----- Sortable tables -------------------------------------------------------
+// Column headings with data-sort="text" (A to Z first), "number" or "date" (highest or newest first)
+// become buttons that reorder the table body. Cells sort by their data-value, or their text if they have none.
+// Set aria-sort on the heading the rows arrive sorted by. onSort runs after each sort with the rows in their new order.
+function makeSortable(table, onSort = () => {}) {
+  if (!table.tHead) return;
+  const headings = [...table.tHead.rows[0].cells];
+  headings.forEach((heading, column) => {
+    const type = heading.dataset.sort;
+    if (!type) return;
+    heading.innerHTML = `<button type="button" class="sort">${heading.innerHTML}</button>`;
+    heading.firstChild.addEventListener('click', () => {
+      const first = type === 'text' ? 'ascending' : 'descending';
+      const direction = heading.getAttribute('aria-sort') === first ? (first === 'ascending' ? 'descending' : 'ascending') : first;
+      headings.forEach(other => other.removeAttribute('aria-sort'));
+      heading.setAttribute('aria-sort', direction);
+
+      const valueOf = row => row.cells[column].dataset.value ?? row.cells[column].textContent.trim();
+      const compare = type === 'number' ? (a, b) => Number(a) - Number(b) : (a, b) => a.localeCompare(b);
+      const sign = direction === 'ascending' ? 1 : -1;
+      const body = table.tBodies[0];
+      const rows = [...body.rows].sort((a, b) => sign * compare(valueOf(a), valueOf(b)));
+      body.append(...rows);
+      onSort(rows);
+    });
+  });
+}
+
+// ----- Dashboard state -------------------------------------------------------
+const state = {
+  apiParams: {},
+  seeds: [],
+  pairs: [],
+  problems: [],
+  filtered: [],
+  readyOnly: false,
+  feeding: new Set(Object.keys(FEEDING)),
+  level: 'species',
+  // 'common' or 'scientific': which name the whole page shows.
+  names: new URLSearchParams(location.search).get('names') === 'scientific' ? 'scientific' : 'common',
+};
+
+function applyFilters() {
+  state.filtered = state.pairs.filter(p => (!state.readyOnly || p.status === 'ready') && state.feeding.has(p.feeding));
+  document.getElementById('filter-shown').textContent =
+    `Showing ${formatNumber(state.filtered.length)} of ${plural(state.pairs.length, 'pair')}`;
+  renderNetwork();
+  renderFlows();
+  renderTopLists();
+  renderFeedingBars();
+  renderMonths();
+  renderPairsTable();
+}
+
+// ----- Query summary and tiles -----------------------------------------------
+function webSearchUrl() {
+  const parts = Object.entries(state.apiParams)
+    .filter(([key]) => key !== ROLE_PARAM)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+  parts.push(`${ROLE_WEB_PARAM}=${encodeURIComponent(state.apiParams[ROLE_PARAM] ?? '')}`, 'verifiable=any');
+  return `https://www.inaturalist.org/observations?${parts.join('&')}`;
+}
+
+function renderSummary(extraCount) {
+  const filters = Object.entries(state.apiParams).map(([key, value]) => `<code>${escapeHtml(key)}=${escapeHtml(value)}</code>`).join(' ');
+  document.getElementById('query-summary').innerHTML =
+    `Observations with the Who Eats Whom role field matching ${filters}` +
+    (extraCount ? `, plus ${plural(extraCount, 'partner observation')} outside the search.` : '.');
+
+  const taxa = new Set(state.pairs.flatMap(p => [p.eater.taxon?.id, p.food.taxon?.id]).filter(Boolean));
+  const ready = state.pairs.filter(p => p.status === 'ready').length;
+  const percent = state.pairs.length ? Math.round(ready / state.pairs.length * 100) : 0;
+  const tiles = [
+    { label: 'Tagged observations', value: state.seeds.length, link: `<a href="${escapeHtml(webSearchUrl())}">View on iNaturalist</a>` },
+    { label: 'Linked pairs', value: state.pairs.length, link: '<a href="#pairs">See the list</a>' },
+    { label: 'Taxa in those pairs', value: taxa.size, link: '<a href="#food-web">Explore the food web</a>' },
+    { label: 'Ready for Who Eats Whom', value: ready, link: `${percent}% of pairs · <a href="#readiness">Why not the rest?</a>` },
+  ];
+  const observers = new Set(state.pairs.flatMap(p => [p.eater.user.id, p.food.user.id]));
+  if (observers.size > 1) tiles.push({ label: 'Observers', value: observers.size, link: '&nbsp;' });
+  document.getElementById('tiles').innerHTML = tiles.map(tile => `<div class="tile">
+      <p class="tile-label">${tile.label}</p>
+      <p class="tile-value">${formatNumber(tile.value)}</p>
+      <p class="tile-link">${tile.link}</p>
+    </div>`).join('');
+}
+
+// ----- Progress toward Who Eats Whom ------------------------------------------
+function renderReadiness() {
+  const counts = Object.fromEntries(STATUS_ORDER.map(status => [status, state.pairs.filter(p => p.status === status).length]));
+  const total = state.pairs.length || 1;
+  const bar = document.getElementById('status-bar');
+  bar.innerHTML = '';
+  for (const status of STATUS_ORDER) {
+    if (!counts[status]) continue;
+    const seg = document.createElement('span');
+    seg.className = `status-seg s-${status}`;
+    seg.style.flex = `${counts[status]} 1 0`;
+    seg.tabIndex = 0;
+    seg.setAttribute('aria-label', `${STATUS[status].label}: ${plural(counts[status], 'pair')}`);
+    addTooltip(seg, () => `<strong>${formatNumber(counts[status])}</strong> <span class="muted">${Math.round(counts[status] / total * 100)}% of pairs</span><br>${escapeHtml(STATUS[status].label)}`);
+    bar.append(seg);
+  }
+  bar.hidden = state.pairs.length === 0;
+  document.getElementById('status-legend').innerHTML = STATUS_ORDER.map(status => `<li>
+      <span class="status-icon s-${status}" aria-hidden="true">${STATUS[status].icon}</span>
+      <span>${escapeHtml(STATUS[status].label)}: <span class="count">${formatNumber(counts[status])}</span>
+        (${Math.round(counts[status] / total * 100)}%) · <a href="#pairs" data-status="${status}">list</a></span>
+      <span class="desc">${escapeHtml(STATUS[status].desc)}</span>
+    </li>`).join('');
+}
+
+// ----- Filters ---------------------------------------------------------------
+function renderFilters() {
+  const ready = state.pairs.filter(p => p.status === 'ready').length;
+  document.getElementById('filter-ready').innerHTML = `
+    <label><input type="radio" name="ready" value="all" checked> All tagged pairs (${formatNumber(state.pairs.length)})</label>
+    <label><input type="radio" name="ready" value="ready"> Only pairs ready for Who Eats Whom (${formatNumber(ready)})</label>`;
+  const feedingCounts = groupBy(state.pairs, p => p.feeding);
+  document.getElementById('filter-feeding').innerHTML = Object.entries(FEEDING)
+    .filter(([kind]) => feedingCounts.has(kind))
+    .map(([kind, label]) => `<label><input type="checkbox" value="${kind}" checked> ${escapeHtml(label)} (${formatNumber(feedingCounts.get(kind).length)})</label>`)
+    .join('');
+
+  document.getElementById('filter-ready').onchange = event => {
+    state.readyOnly = event.target.value === 'ready';
+    applyFilters();
+  };
+  document.getElementById('filter-feeding').onchange = () => {
+    state.feeding = new Set([...document.querySelectorAll('#filter-feeding input:checked')].map(input => input.value));
+    applyFilters();
+  };
+  document.getElementById('group-level').onchange = event => {
+    state.level = event.target.value;
+    net.positions.clear();
+    applyFilters();
+  };
+}
+
+// ----- Names switch ----------------------------------------------------------------
+function setupNamesSwitch() {
+  const toggle = document.getElementById('names-switch');
+  const sides = document.querySelectorAll('.switch-side');
+  const show = () => {
+    toggle.setAttribute('aria-checked', String(state.names === 'scientific'));
+    sides.forEach(side => side.classList.toggle('on', side.dataset.names === state.names));
+  };
+  const set = mode => {
+    if (mode === state.names) return;
+    state.names = mode;
+    show();
+    const url = new URL(location.href);
+    if (mode === 'scientific') url.searchParams.set('names', 'scientific');
+    else url.searchParams.delete('names');
+    history.replaceState(null, '', url);
+    renderNames();
+  };
+  toggle.onclick = () => set(state.names === 'common' ? 'scientific' : 'common');
+  sides.forEach(side => { side.onclick = () => set(side.dataset.names); });
+  show();
+}
+
+// Redraws everything that shows taxon names, without laying the food web out again.
+function renderNames() {
+  if (net.labelSel) {
+    net.labelSel.text(nodeLabel).attr('font-style', nodeFontStyle);
+    updateLabels();
+    renderDetail();
+  }
+  renderFlows();
+  renderTopLists();
+  renderPairsTable();
+  renderProblems();
+}
+
+// ----- Food web ----------------------------------------------------------------
+const net = {
+  ready: false,
+  svg: null,
+  layer: null,
+  zoom: null,
+  sim: null,
+  nodes: [],
+  links: [],
+  byKey: new Map(),
+  nodeSel: null,
+  linkSel: null,
+  selected: null,
+  k: 1,
+  positions: new Map(),
+};
+
+function buildNetwork(pairs, level) {
+  const nodes = new Map();
+  const links = new Map();
+  const nodeFor = obs => {
+    const { key, info } = groupTaxon(obs.taxon, level);
+    if (!nodes.has(key)) {
+      nodes.set(key, { key, info, group: groupOf(obs.taxon), pairs: 0, obsIds: new Set(), photo: null, foods: new Map(), eaters: new Map() });
+    }
+    const node = nodes.get(key);
+    node.obsIds.add(obs.id);
+    if (!node.photo && obs.photos?.[0]) node.photo = obs.photos[0];
+    return node;
+  };
+  const addTo = (map, key, pair) => { if (!map.has(key)) map.set(key, []); map.get(key).push(pair); };
+  for (const pair of pairs) {
+    const food = nodeFor(pair.food);
+    const eater = nodeFor(pair.eater);
+    food.pairs++;
+    if (eater !== food) eater.pairs++;
+    addTo(food.eaters, eater.key, pair);
+    addTo(eater.foods, food.key, pair);
+    const id = `${food.key}>${eater.key}`;
+    if (!links.has(id)) links.set(id, { id, source: food.key, target: eater.key, from: food, to: eater, pairs: [] });
+    links.get(id).pairs.push(pair);
+  }
+  for (const link of links.values()) link.ready = link.pairs.some(p => p.status === 'ready');
+  for (const node of nodes.values()) node.r = Math.min(22, 4 + 2 * Math.sqrt(node.pairs));
+  // The most-connected nodes get labels first.
+  const ranked = [...nodes.values()].sort((a, b) => b.pairs - a.pairs || (b.foods.size + b.eaters.size) - (a.foods.size + a.eaters.size));
+  ranked.forEach((node, i) => { node.labelRank = i; });
+  return { nodes: ranked, links: [...links.values()] };
+}
+
+const linkWidth = link => Math.min(6, 0.6 + 0.9 * Math.sqrt(link.pairs.length));
+
+function setupNetwork() {
+  const svg = d3.select('#net');
+  net.svg = svg;
+  svg.append('defs').html(`
+    <marker id="arrow" viewBox="0 -4 8 8" refX="8" refY="0" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path class="arrow" d="M0,-4L8,0L0,4Z"/></marker>
+    <marker id="arrow-hl" viewBox="0 -4 8 8" refX="8" refY="0" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="arrow-hl" d="M0,-4L8,0L0,4Z"/></marker>`);
+  net.layer = svg.append('g');
+  net.linkLayer = net.layer.append('g');
+  net.nodeLayer = net.layer.append('g');
+  // Labels get their own layer so no circle ever covers one.
+  net.labelLayer = net.layer.append('g');
+
+  const wrap = document.getElementById('net-wrap');
+  const isFullscreen = () => document.fullscreenElement === wrap;
+  net.zoom = d3.zoom()
+    .scaleExtent([0.03, 8])
+    .filter(event => {
+      // The scroll wheel scrolls the page until the web is clicked (or full screen).
+      if (event.type === 'wheel') return isFullscreen() || document.activeElement === svg.node();
+      // On touch screens one finger scrolls the page and two fingers pan and zoom, except in full screen.
+      if (event.type.startsWith('touch')) return isFullscreen() || event.touches.length >= 2;
+      return !event.ctrlKey && !event.button;
+    })
+    .on('zoom', event => {
+      net.layer.attr('transform', event.transform);
+      net.k = event.transform.k;
+      updateLabels();
+    });
+  svg.call(net.zoom).on('dblclick.zoom', null);
+  svg.on('pointerdown', () => svg.node().focus({ preventScroll: true }));
+  svg.on('click', event => { if (event.target === svg.node()) selectNode(null); });
+  svg.on('keydown', event => { if (event.key === 'Escape') selectNode(null); });
+
+  document.getElementById('net-zoom-in').onclick = () => svg.transition().duration(250).call(net.zoom.scaleBy, 1.4);
+  document.getElementById('net-zoom-out').onclick = () => svg.transition().duration(250).call(net.zoom.scaleBy, 1 / 1.4);
+  document.getElementById('net-fit').onclick = () => fitNetwork(400);
+  const fullscreenButton = document.getElementById('net-fullscreen');
+  fullscreenButton.hidden = !wrap.requestFullscreen;
+  fullscreenButton.onclick = () => (isFullscreen() ? document.exitFullscreen() : wrap.requestFullscreen());
+  document.addEventListener('fullscreenchange', () => {
+    fullscreenButton.title = isFullscreen() ? 'Exit full screen' : 'Full screen';
+    fullscreenButton.textContent = isFullscreen() ? '✕' : '⤢';
+    hideTooltip();
+    setTimeout(() => fitNetwork(0), 100);
+  });
+
+  const search = document.getElementById('net-search');
+  const searchMsg = document.getElementById('net-search-msg');
+  let lastTerm = '';
+  // Enter and picking a suggestion both search; "change" also fires on Enter in some browsers, so repeats are skipped.
+  const find = () => {
+    const term = search.value.trim().toLowerCase();
+    if (!term || term === lastTerm) return;
+    lastTerm = term;
+    const names = node => [node.info?.name, node.info?.common].filter(Boolean).map(n => n.toLowerCase());
+    const match = net.nodes.find(node => names(node).includes(term)) ?? net.nodes.find(node => names(node).some(n => n.includes(term)));
+    searchMsg.textContent = match ? '' : `Nothing in the food web matches “${search.value.trim()}”.`;
+    if (match) selectNode(match.key, true);
+  };
+  search.addEventListener('change', find);
+  search.addEventListener('input', () => { lastTerm = ''; searchMsg.textContent = ''; });
+  search.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); find(); } });
+
+  net.ready = true;
+}
+
+const nodeLabel = node => taxonLabel(node.info);
+const nodeFontStyle = node => (shownItalic(node.info) ? 'italic' : null);
+
+function fillSearchList() {
+  const names = new Set();
+  for (const node of net.nodes) {
+    if (!node.info) continue;
+    names.add(node.info.name);
+    if (node.info.common) names.add(capitalize(node.info.common));
+  }
+  document.getElementById('net-names').innerHTML = [...names].sort().map(name => `<option value="${escapeHtml(name)}">`).join('');
+}
+
+function renderNetwork() {
+  const empty = document.getElementById('net-empty');
+  if (typeof d3 === 'undefined') {
+    document.getElementById('net').hidden = true;
+    document.querySelector('.net-buttons').hidden = true;
+    empty.hidden = false;
+    empty.textContent = "The food web couldn't be drawn because its library (D3, from cdn.jsdelivr.net) didn't load. The tables below have the same information.";
+    return;
+  }
+  if (!net.ready) setupNetwork();
+  net.sim?.stop();
+
+  const { nodes, links } = buildNetwork(state.filtered, state.level);
+  // Keep nodes where they were when only the filters change, so the web doesn't jump around.
+  let reused = 0;
+  for (const node of nodes) {
+    const old = net.positions.get(node.key);
+    if (old) { node.x = old.x; node.y = old.y; reused++; }
+  }
+  net.nodes = nodes;
+  net.links = links;
+  net.byKey = new Map(nodes.map(node => [node.key, node]));
+  empty.hidden = nodes.length > 0;
+  empty.textContent = 'No pairs match these filters.';
+
+  // Self-loops (cannibalism, or two taxa in the same group) aren't drawn; they're in the detail lists.
+  const drawn = links.filter(link => link.source !== link.target);
+  // A weaker pull sideways than up and down stretches the web to fill a wide box, and the reverse for a tall one.
+  const box = net.svg.node().getBoundingClientRect();
+  const aspect = box.width && box.height ? box.width / box.height : 1;
+  net.sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(drawn).id(node => node.key).distance(link => 18 + link.source.r + link.target.r).strength(0.7))
+    .force('charge', d3.forceManyBody().strength(-35).distanceMax(260))
+    .force('x', d3.forceX(0).strength(0.045 / Math.max(1, aspect)))
+    .force('y', d3.forceY(0).strength(0.045 * Math.min(1, aspect)))
+    .force('collide', d3.forceCollide(node => node.r + 2))
+    .stop();
+  // Lay the web out before drawing it, rather than animating it into place.
+  const ticks = reused ? 120 : 320;
+  if (reused) net.sim.alpha(0.3);
+  for (let i = 0; i < ticks; i++) net.sim.tick();
+  net.sim.on('tick', updatePositions);
+
+  net.linkSel = net.linkLayer.selectAll('line')
+    .data(drawn, link => link.id)
+    .join('line')
+    .attr('class', link => (link.ready ? 'link' : 'link pending'))
+    .attr('stroke-width', linkWidth)
+    .attr('vector-effect', 'non-scaling-stroke');
+
+  net.nodeSel = net.nodeLayer.selectAll('g.node')
+    .data(nodes, node => node.key)
+    .join(enter => {
+      const g = enter.append('g').attr('class', 'node');
+      g.append('circle');
+      return g;
+    });
+  net.nodeSel.select('circle').attr('r', node => node.r).attr('class', node => `grp-${node.group}`);
+  net.labelSel = net.labelLayer.selectAll('text')
+    .data(nodes, node => node.key)
+    .join('text')
+    .attr('class', 'net-label')
+    .attr('dy', '0.35em')
+    .text(nodeLabel)
+    .attr('font-style', nodeFontStyle);
+  net.nodeSel
+    .on('click', (event, node) => { event.stopPropagation(); selectNode(net.selected === node.key ? null : node.key); })
+    .on('pointermove', (event, node) => showTooltip(nodeTooltipHtml(node), event))
+    .on('pointerleave', hideTooltip)
+    .call(d3.drag()
+      .on('start', (event, node) => {
+        if (!event.active) net.sim.alphaTarget(0.25).restart();
+        node.fx = node.x;
+        node.fy = node.y;
+        hideTooltip();
+      })
+      .on('drag', (event, node) => { node.fx = event.x; node.fy = event.y; })
+      .on('end', (event, node) => {
+        if (!event.active) net.sim.alphaTarget(0);
+        node.fx = null;
+        node.fy = null;
+      }));
+
+  updatePositions();
+  if (reused < nodes.length) fitNetwork(reused ? 300 : 0);
+  fillSearchList();
+  renderLegend();
+  if (net.selected && !net.byKey.has(net.selected)) net.selected = null;
+  selectNode(net.selected);
+}
+
+function updatePositions() {
+  for (const node of net.nodes) net.positions.set(node.key, { x: node.x, y: node.y });
+  // Lines stop at the edge of each circle so the arrowhead touches the consumer.
+  net.linkSel
+    .each(function (link) {
+      const dx = link.target.x - link.source.x;
+      const dy = link.target.y - link.source.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const start = link.source.r + 1;
+      const end = link.target.r + 1.5;
+      this.setAttribute('x1', link.source.x + dx / length * start);
+      this.setAttribute('y1', link.source.y + dy / length * start);
+      this.setAttribute('x2', link.target.x - dx / length * end);
+      this.setAttribute('y2', link.target.y - dy / length * end);
+    });
+  net.nodeSel.attr('transform', node => `translate(${node.x},${node.y})`);
+  net.labelSel.attr('x', node => node.x + node.r + 3).attr('y', node => node.y);
+}
+
+function fitNetwork(duration) {
+  if (!net.nodes.length) return;
+  const box = net.svg.node().getBoundingClientRect();
+  const xs = net.nodes.flatMap(node => [node.x - node.r, node.x + node.r]);
+  const ys = net.nodes.flatMap(node => [node.y - node.r, node.y + node.r]);
+  const [x0, x1] = d3.extent(xs);
+  const [y0, y1] = d3.extent(ys);
+  const k = Math.min(2, 0.92 * box.width / (x1 - x0 || 1), 0.92 * box.height / (y1 - y0 || 1));
+  const transform = d3.zoomIdentity.translate(box.width / 2, box.height / 2).scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
+  net.svg.transition().duration(duration).call(net.zoom.transform, transform);
+}
+
+// Labels keep the same size on screen at any zoom. Zoomed out, only the largest circles get one; with a taxon
+// selected, it and its partners do. Labels that would overlap one already placed are skipped, most-connected first.
+function updateLabels() {
+  if (!net.nodeSel) return;
+  const k = net.k;
+  const transform = d3.zoomTransform(net.svg.node());
+  const view = net.svg.node().getBoundingClientRect();
+  const neighbors = net.selected ? neighborKeys(net.selected) : null;
+  const font = `11px ${getComputedStyle(document.body).fontFamily}`;
+  net.labelLayer.style('font-size', `${11 / k}px`);
+  const candidates = net.nodes
+    .filter(node => (neighbors ? neighbors.has(node.key) : node.labelRank < 8 || node.r * k >= 9))
+    .sort((a, b) => (b.key === net.selected) - (a.key === net.selected) || a.labelRank - b.labelRank);
+  const placed = [];
+  const shown = new Set();
+  // The selected circle is an obstacle too, so its partners' labels don't run across it.
+  const selected = net.selected && net.byKey.get(net.selected);
+  if (selected) {
+    const cx = transform.applyX(selected.x);
+    const cy = transform.applyY(selected.y);
+    const r = selected.r * k;
+    placed.push([cx - r, cy - r, cx + r, cy + r]);
+  }
+  for (const node of candidates) {
+    if (node.labelMode !== state.names) {
+      node.labelWidth = measureText(nodeLabel(node), font);
+      node.labelMode = state.names;
+    }
+    const x = transform.applyX(node.x) + node.r * k + 3;
+    const y = transform.applyY(node.y);
+    const box = [x - 2, y - 7, x + node.labelWidth + 2, y + 7];
+    if (box[2] < 0 || box[0] > view.width || box[3] < 0 || box[1] > view.height) continue;
+    if (placed.some(other => box[0] < other[2] && box[2] > other[0] && box[1] < other[3] && box[3] > other[1])) continue;
+    placed.push(box);
+    shown.add(node.key);
+  }
+  net.labelSel.attr('stroke-width', 3 / k).classed('off', node => !shown.has(node.key));
+}
+
+function neighborKeys(key) {
+  const node = net.byKey.get(key);
+  return new Set([key, ...(node?.foods.keys() ?? []), ...(node?.eaters.keys() ?? [])]);
+}
+
+function nodeTooltipHtml(node) {
+  const alt = secondaryNameHtml(node.info);
+  return `<strong>${primaryNameHtml(node.info)}</strong>${alt ? `<br><span class="muted">${alt}</span>` : ''}<br>
+    ${escapeHtml(GROUPS[node.group])}<br>
+    Eats ${plural(node.foods.size, 'taxon', 'taxa')} · eaten by ${plural(node.eaters.size, 'taxon', 'taxa')}<br>
+    <span class="muted">${plural(node.pairs, 'pair')}</span>`;
+}
+
+function selectNode(key, zoomTo = false) {
+  net.selected = key && net.byKey.has(key) ? key : null;
+  const neighbors = net.selected ? neighborKeys(net.selected) : new Set();
+  net.svg.classed('has-selection', Boolean(net.selected));
+  net.nodeSel.classed('hl', node => neighbors.has(node.key)).classed('selected', node => node.key === net.selected);
+  net.linkSel.classed('hl', link => link.source.key === net.selected || link.target.key === net.selected);
+  // Raise the highlighted links and taxa so they draw over the dimmed ones.
+  net.linkSel.filter('.hl').raise();
+  net.nodeSel.filter('.hl').raise();
+  updateLabels();
+  renderDetail();
+  if (zoomTo && net.selected) {
+    const node = net.byKey.get(net.selected);
+    const box = net.svg.node().getBoundingClientRect();
+    const k = Math.max(net.k, 1.5);
+    net.svg.transition().duration(500)
+      .call(net.zoom.transform, d3.zoomIdentity.translate(box.width / 2, box.height / 2).scale(k).translate(-node.x, -node.y));
+    document.getElementById('net-wrap').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+function renderDetail() {
+  const detail = document.getElementById('net-detail');
+  const node = net.selected && net.byKey.get(net.selected);
+  if (!node) {
+    detail.innerHTML = '<p>Select a circle, or find a taxon by name, to see what it eats and what eats it.</p>';
+    return;
+  }
+  const info = node.info;
+  const photo = node.photo
+    ? `<figure><img src="${escapeHtml(node.photo.url)}" alt="" width="72" height="72"><figcaption>${escapeHtml(node.photo.attribution)}</figcaption></figure>`
+    : '<span></span>';
+  const alt = secondaryNameHtml(info);
+  const obsLink = idListUrl([...node.obsIds]);
+  const links = [
+    info ? `<a href="${taxonUrl(info.id)}">Taxon page</a>` : '',
+    obsLink ? `<a href="${obsLink}">Its ${plural(node.obsIds.size, 'observation')} in these pairs</a>` : '',
+  ].filter(Boolean).join(' · ');
+
+  const list = (map, emptyText) => {
+    if (map.size === 0) return `<ul><li class="empty">${emptyText}</li></ul>`;
+    const rows = [...map].map(([key, pairs]) => ({ other: net.byKey.get(key), pairs }))
+      .sort((a, b) => b.pairs.length - a.pairs.length || taxonLabel(a.other.info).localeCompare(taxonLabel(b.other.info)));
+    return `<ul>${rows.map(({ other, pairs }) => {
+      const ready = pairs.filter(p => p.status === 'ready').length;
+      const url = idListUrl(pairObsIds(pairs));
+      const count = plural(pairs.length, 'pair');
+      const self = other.key === node.key ? ' (same taxon)' : '';
+      return `<li>
+        <button type="button" class="linklike" data-key="${escapeHtml(other.key)}">${primaryNameHtml(other.info)}</button>${self}
+        <span class="pair-count">${url ? `<a href="${url}">${count}</a>` : count}${ready ? `, ${formatNumber(ready)} ready` : ''}</span>
+      </li>`;
+    }).join('')}</ul>`;
+  };
+
+  detail.innerHTML = `
+    <div class="detail-head">
+      ${photo}
+      <div>
+        <h3>${primaryNameHtml(info)}</h3>
+        <p>${alt ? `${alt} · ` : ''}${escapeHtml(GROUPS[node.group])}</p>
+        <p>${links}</p>
+      </div>
+      <button type="button" class="secondary small" id="detail-close">Clear</button>
+    </div>
+    <div class="detail-lists">
+      <div><h4>Eats ${plural(node.foods.size, 'taxon', 'taxa')}</h4>${list(node.foods, 'Nothing in these pairs')}</div>
+      <div><h4>Eaten by ${plural(node.eaters.size, 'taxon', 'taxa')}</h4>${list(node.eaters, 'Nothing in these pairs')}</div>
+    </div>`;
+  detail.querySelector('#detail-close').onclick = () => selectNode(null);
+  detail.querySelectorAll('button[data-key]').forEach(button => { button.onclick = () => selectNode(button.dataset.key, true); });
+}
+
+function renderLegend() {
+  const groups = groupBy(net.nodes, node => node.group);
+  document.getElementById('net-legend').innerHTML = Object.entries(GROUPS)
+    .filter(([group]) => groups.has(group))
+    .map(([group, label]) => `<li><span class="swatch grp-${group}"></span>${escapeHtml(label)} (${formatNumber(groups.get(group).length)})</li>`)
+    .join('') +
+    '<li><span class="line-key"></span>At least one pair ready for Who Eats Whom</li>' +
+    '<li><span class="line-key pending"></span>None ready yet</li>';
+}
+
+// ----- Flows: Sankey and radial ------------------------------------------------
+const flowState = { view: 'sankey' };
+const textMeasure = document.createElement('canvas').getContext('2d');
+
+const measureText = (text, font) => { textMeasure.font = font; return textMeasure.measureText(text).width; };
+
+// Nudges label positions (sorted top to bottom) apart so no two are closer than gap, staying within min and max.
+function spreadLabels(ys, gap, min, max) {
+  const out = [...ys];
+  for (let i = 0; i < out.length; i++) out[i] = Math.max(out[i], i ? out[i - 1] + gap : min);
+  for (let i = out.length - 1; i >= 0; i--) out[i] = Math.min(out[i], i < out.length - 1 ? out[i + 1] - gap : max);
+  return out;
+}
+
+// Shortens text with an ellipsis to fit a width in pixels.
+function fitText(text, maxWidth, font) {
+  textMeasure.font = font;
+  if (textMeasure.measureText(text).width <= maxWidth) return text;
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (textMeasure.measureText(`${text.slice(0, mid)}…`).width <= maxWidth) lo = mid;
+    else hi = mid - 1;
+  }
+  return `${text.slice(0, lo).trimEnd()}…`;
+}
+
+// Food and consumer groups at the chosen ranks, the top few on each side, and the rest as "Other".
+function buildFlows(pairs, foodRank, eaterRank, top) {
+  const side = (obsOf, rank) => {
+    const groups = new Map();
+    const keyOf = new Map();
+    for (const pair of pairs) {
+      const obs = obsOf(pair);
+      const { key, info } = groupTaxon(obs.taxon, rank);
+      if (!groups.has(key)) groups.set(key, { key, info, group: groupOf(obs.taxon), count: 0, ready: 0 });
+      const g = groups.get(key);
+      g.count++;
+      if (pair.status === 'ready') g.ready++;
+      keyOf.set(pair, key);
+    }
+    const sorted = [...groups.values()].sort((a, b) => b.count - a.count || taxonLabel(a.info).localeCompare(taxonLabel(b.info)));
+    const kept = sorted.slice(0, sorted.length > top + 1 ? top : top + 1);
+    const rest = sorted.slice(kept.length);
+    if (rest.length) {
+      const other = { key: 'other', info: null, group: 'other', count: 0, ready: 0, otherCount: rest.length };
+      for (const g of rest) { other.count += g.count; other.ready += g.ready; }
+      kept.push(other);
+    }
+    const keptKeys = new Set(kept.map(g => g.key));
+    return { nodes: kept, keyFor: pair => (keptKeys.has(keyOf.get(pair)) ? keyOf.get(pair) : 'other') };
+  };
+  const food = side(p => p.food, foodRank);
+  const eater = side(p => p.eater, eaterRank);
+  const flows = new Map();
+  for (const pair of pairs) {
+    const id = `${food.keyFor(pair)}>${eater.keyFor(pair)}`;
+    if (!flows.has(id)) flows.set(id, { id, food: food.keyFor(pair), eater: eater.keyFor(pair), count: 0, ready: 0 });
+    flows.get(id).count++;
+    if (pair.status === 'ready') flows.get(id).ready++;
+  }
+  // Food groups in group order, largest first; "Other" last.
+  const groupIndex = Object.keys(GROUPS);
+  food.nodes.sort((a, b) => (a.key === 'other') - (b.key === 'other') || groupIndex.indexOf(a.group) - groupIndex.indexOf(b.group) || b.count - a.count);
+  return { food: food.nodes, eater: eater.nodes, flows: [...flows.values()] };
+}
+
+const flowName = g => (g.key === 'other' ? `Other (${plural(g.otherCount, 'taxon', 'taxa')})` : taxonLabel(g.info));
+
+function flowTooltip(flow, foodNode, eaterNode) {
+  return `<strong>${plural(flow.count, 'pair')}</strong> <span class="muted">${formatNumber(flow.ready)} ready</span><br>
+    ${escapeHtml(flowName(foodNode))} → ${escapeHtml(flowName(eaterNode))}`;
+}
+function flowNodeTooltip(g, sideLabel) {
+  return `<strong>${plural(g.count, 'pair')}</strong> <span class="muted">${formatNumber(g.ready)} ready</span><br>
+    ${g.key === 'other' ? escapeHtml(flowName(g)) : primaryNameHtml(g.info)}${secondaryNameHtml(g.info) ? ` <span class="muted">${secondaryNameHtml(g.info)}</span>` : ''}<br>
+    <span class="muted">${sideLabel}</span>`;
+}
+
+function setupFlows() {
+  const rankOptions = GROUP_RANKS.map(([rank]) => `<option value="${rank}">${capitalize(rank)}</option>`).join('');
+  const foodRank = document.getElementById('flow-food-rank');
+  const eaterRank = document.getElementById('flow-eater-rank');
+  foodRank.innerHTML = rankOptions;
+  eaterRank.innerHTML = rankOptions;
+  foodRank.value = 'family';
+  eaterRank.value = 'order';
+  for (const select of [foodRank, eaterRank, document.getElementById('flow-top')]) select.onchange = renderFlows;
+  document.querySelectorAll('[data-flow-view]').forEach(button => {
+    button.onclick = () => {
+      flowState.view = button.dataset.flowView;
+      document.querySelectorAll('[data-flow-view]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+      renderFlows();
+    };
+  });
+  let width = 0;
+  window.addEventListener('resize', () => {
+    const now = document.getElementById('flow-chart').clientWidth;
+    if (Math.abs(now - width) > 20) { width = now; renderFlows(); }
+  });
+}
+
+function renderFlows() {
+  const container = document.getElementById('flow-chart');
+  if (typeof d3 === 'undefined') {
+    container.innerHTML = '<p class="note">The diagram couldn\'t be drawn because its library (D3, from cdn.jsdelivr.net) didn\'t load.</p>';
+    return;
+  }
+  if (state.filtered.length === 0) {
+    container.innerHTML = '<p class="note">No pairs match these filters.</p>';
+    return;
+  }
+  const data = buildFlows(state.filtered, document.getElementById('flow-food-rank').value,
+    document.getElementById('flow-eater-rank').value, Number(document.getElementById('flow-top').value));
+  container.innerHTML = '';
+  if (flowState.view === 'radial') drawRadial(container, data);
+  else drawSankey(container, data);
+}
+
+// Two columns: food on the left, consumers on the right. Consumers are ordered by where their food sits,
+// which keeps bands from crossing more than they need to.
+function drawSankey(container, { food, eater, flows }) {
+  const width = Math.max(300, container.clientWidth);
+  const font = `12px ${getComputedStyle(document.body).fontFamily}`;
+  const labelWidth = Math.min(210, width * (width < 500 ? 0.37 : 0.31));
+  const nodeWidth = 12;
+  const pad = 6;
+  const top = 24;
+  const height = Math.max(300, Math.min(820, 30 * Math.max(food.length, eater.length)));
+  const total = d3.sum(flows, f => f.count);
+  const scale = Math.min((height - pad * (food.length - 1)) / total, (height - pad * (eater.length - 1)) / total);
+  const xFood = labelWidth;
+  const xEater = width - labelWidth - nodeWidth;
+
+  const stack = nodes => {
+    const used = d3.sum(nodes, n => n.count * scale) + pad * (nodes.length - 1);
+    let y = top + (height - used) / 2;
+    for (const n of nodes) { n.y0 = y; n.y1 = y + n.count * scale; y = n.y1 + pad; }
+  };
+  stack(food);
+  const foodIndex = new Map(food.map((n, i) => [n.key, i]));
+  const foodMid = new Map(food.map(n => [n.key, (n.y0 + n.y1) / 2]));
+  for (const n of eater) {
+    const mine = flows.filter(f => f.eater === n.key);
+    n.center = d3.sum(mine, f => foodMid.get(f.food) * f.count) / d3.sum(mine, f => f.count);
+  }
+  eater.sort((a, b) => (a.key === 'other') - (b.key === 'other') || a.center - b.center);
+  stack(eater);
+  const eaterIndex = new Map(eater.map((n, i) => [n.key, i]));
+  const foodByKey = new Map(food.map(n => [n.key, n]));
+  const eaterByKey = new Map(eater.map(n => [n.key, n]));
+
+  // Where each band leaves its food and reaches its consumer.
+  const foodOffset = new Map(food.map(n => [n.key, n.y0]));
+  const eaterOffset = new Map(eater.map(n => [n.key, n.y0]));
+  for (const f of [...flows].sort((a, b) => foodIndex.get(a.food) - foodIndex.get(b.food) || eaterIndex.get(a.eater) - eaterIndex.get(b.eater))) {
+    f.fy0 = foodOffset.get(f.food);
+    foodOffset.set(f.food, f.fy0 + f.count * scale);
+  }
+  for (const f of [...flows].sort((a, b) => eaterIndex.get(a.eater) - eaterIndex.get(b.eater) || foodIndex.get(a.food) - foodIndex.get(b.food))) {
+    f.ey0 = eaterOffset.get(f.eater);
+    eaterOffset.set(f.eater, f.ey0 + f.count * scale);
+  }
+
+  const svg = d3.select(container).append('svg')
+    .attr('viewBox', `0 0 ${width} ${height + top + 8}`)
+    .attr('role', 'img')
+    .attr('aria-label', 'Sankey diagram of pairs between food groups and consumer groups. The pair table below has the same information.');
+  svg.append('text').attr('class', 'flow-heading').attr('x', xFood + nodeWidth).attr('y', 12).attr('text-anchor', 'end').text('Food');
+  svg.append('text').attr('class', 'flow-heading').attr('x', xEater).attr('y', 12).text('Consumers');
+
+  const x0 = xFood + nodeWidth;
+  const x1 = xEater;
+  const xm = (x0 + x1) / 2;
+  const bands = svg.append('g').selectAll('path')
+    .data(flows)
+    .join('path')
+    .attr('class', f => `flow-band grp-${foodByKey.get(f.food).group}`)
+    .attr('d', f => {
+      const a0 = f.fy0;
+      const a1 = f.fy0 + f.count * scale;
+      const b0 = f.ey0;
+      const b1 = f.ey0 + f.count * scale;
+      return `M${x0},${a0}C${xm},${a0} ${xm},${b0} ${x1},${b0}L${x1},${b1}C${xm},${b1} ${xm},${a1} ${x0},${a1}Z`;
+    })
+    .attr('tabindex', 0)
+    .attr('aria-label', f => `${flowName(foodByKey.get(f.food))} to ${flowName(eaterByKey.get(f.eater))}: ${plural(f.count, 'pair')}`)
+    .on('pointermove focus', (event, f) => showTooltip(flowTooltip(f, foodByKey.get(f.food), eaterByKey.get(f.eater)), event))
+    .on('pointerleave blur', hideTooltip);
+
+  const drawSide = (nodes, x, isFood) => {
+    const labelY = spreadLabels(nodes.map(n => (n.y0 + n.y1) / 2), 15, top + 6, top + height - 2);
+    nodes.forEach((n, i) => { n.labelY = labelY[i]; });
+    const g = svg.append('g').selectAll('g').data(nodes).join('g').attr('class', 'flow-node');
+    g.append('rect')
+      .attr('x', x).attr('y', n => n.y0)
+      .attr('width', nodeWidth).attr('height', n => Math.max(1, n.y1 - n.y0))
+      .attr('rx', 2)
+      .attr('class', n => `grp-${n.group}`);
+    const labelX = isFood ? x - 6 : x + nodeWidth + 6;
+    const text = g.append('text')
+      .attr('x', labelX).attr('y', n => n.labelY).attr('dy', '0.35em')
+      .attr('text-anchor', isFood ? 'end' : 'start');
+    text.append('tspan').attr('class', 'flow-label')
+      .attr('font-style', n => (shownItalic(n.info) ? 'italic' : null))
+      .text(n => fitText(flowName(n), labelWidth - 16 - measureText(formatNumber(n.count), font), font));
+    text.append('tspan').attr('class', 'flow-count').attr('dx', 5).text(n => formatNumber(n.count));
+    g.on('pointermove', (event, n) => showTooltip(flowNodeTooltip(n, isFood ? 'Food' : 'Consumer'), event))
+      .on('pointerenter', (event, n) => {
+        svg.classed('flow-dim', true);
+        bands.classed('hl', f => (isFood ? f.food : f.eater) === n.key);
+      })
+      .on('pointerleave', () => { hideTooltip(); svg.classed('flow-dim', false); bands.classed('hl', false); });
+  };
+  drawSide(food, xFood, true);
+  drawSide(eater, xEater, false);
+}
+
+// The same groups around a circle: food on the left half, consumers on the right, ribbons pointing to the consumer.
+function drawRadial(container, { food, eater, flows }) {
+  const width = Math.max(300, container.clientWidth);
+  const size = Math.min(width, 760);
+  const font = `12px ${getComputedStyle(document.body).fontFamily}`;
+  const labelSpace = size < 520 ? 80 : 150;
+  const outer = size / 2 - labelSpace;
+  const inner = outer - 14;
+
+  // Eaters run clockwise from the top; food is reversed so the top food group sits at the top left, like the Sankey.
+  const ordered = [...food].reverse();
+  const foodCenter = new Map(food.map((n, i) => [n.key, i]));
+  const eaterCenter = eater.map(n => {
+    const mine = flows.filter(f => f.eater === n.key);
+    return { n, center: d3.sum(mine, f => foodCenter.get(f.food) * f.count) / d3.sum(mine, f => f.count) };
+  }).sort((a, b) => (a.n.key === 'other') - (b.n.key === 'other') || a.center - b.center).map(x => x.n);
+  const all = [...eaterCenter, ...ordered];
+  const index = new Map(all.map((n, i) => [`${i < eaterCenter.length ? 'e' : 'f'}:${n.key}`, i]));
+  const matrix = all.map(() => all.map(() => 0));
+  for (const f of flows) matrix[index.get(`f:${f.food}`)][index.get(`e:${f.eater}`)] += f.count;
+
+  const chords = d3.chordDirected().padAngle(Math.min(0.04, 10 / inner))(matrix);
+  const arc = d3.arc().innerRadius(inner).outerRadius(outer);
+  const ribbon = d3.ribbonArrow().radius(inner - 1).padAngle(1 / inner).headRadius(Math.min(10, inner * 0.06));
+  const isFoodIndex = i => i >= eaterCenter.length;
+
+  const svg = d3.select(container).append('svg')
+    .attr('viewBox', `${-width / 2} ${-size / 2} ${width} ${size}`)
+    .attr('role', 'img')
+    .attr('aria-label', 'Radial diagram of pairs between food groups and consumer groups. The pair table below has the same information.');
+  svg.append('text').attr('class', 'flow-heading').attr('x', -width / 2 + 4).attr('y', -size / 2 + 14).text('Food');
+  svg.append('text').attr('class', 'flow-heading').attr('x', width / 2 - 4).attr('y', -size / 2 + 14).attr('text-anchor', 'end').text('Consumers');
+
+  const flowFor = chord => {
+    const f = food.find(n => n === all[chord.source.index]);
+    const e = eater.find(n => n === all[chord.target.index]);
+    return { flow: flows.find(x => x.food === f.key && x.eater === e.key), f, e };
+  };
+  const bands = svg.append('g').selectAll('path')
+    .data(chords)
+    .join('path')
+    .attr('class', chord => `flow-band grp-${all[chord.source.index].group}`)
+    .attr('d', ribbon)
+    .attr('tabindex', 0)
+    .attr('aria-label', chord => { const { flow, f, e } = flowFor(chord); return `${flowName(f)} to ${flowName(e)}: ${plural(flow.count, 'pair')}`; })
+    .on('pointermove focus', (event, chord) => { const { flow, f, e } = flowFor(chord); showTooltip(flowTooltip(flow, f, e), event); })
+    .on('pointerleave blur', hideTooltip);
+
+  const groups = svg.append('g').selectAll('g').data(chords.groups).join('g').attr('class', 'flow-node');
+  groups.append('path').attr('d', arc).attr('class', g => `grp-${all[g.index].group}`);
+  groups.filter(g => g.endAngle - g.startAngle > 0.035).append('text')
+    .each(function (g) {
+      const angle = (g.startAngle + g.endAngle) / 2;
+      const flip = angle > Math.PI;
+      const n = all[g.index];
+      const text = d3.select(this)
+        .attr('dy', '0.35em')
+        .attr('transform', `rotate(${angle * 180 / Math.PI - 90}) translate(${outer + 6})${flip ? ' rotate(180)' : ''}`)
+        .attr('text-anchor', flip ? 'end' : 'start');
+      text.append('tspan').attr('class', 'flow-label')
+        .attr('font-style', shownItalic(n.info) ? 'italic' : null)
+        .text(fitText(flowName(n), labelSpace - 34, font));
+      text.append('tspan').attr('class', 'flow-count').attr('dx', 4).text(formatNumber(n.count));
+    });
+  groups
+    .on('pointermove', (event, g) => showTooltip(flowNodeTooltip(all[g.index], isFoodIndex(g.index) ? 'Food' : 'Consumer'), event))
+    .on('pointerenter', (event, g) => {
+      svg.classed('flow-dim', true);
+      bands.classed('hl', chord => chord.source.index === g.index || chord.target.index === g.index);
+    })
+    .on('pointerleave', () => { hideTooltip(); svg.classed('flow-dim', false); bands.classed('hl', false); });
+}
+
+// ----- Bar lists and months -------------------------------------------------------
+function renderBars(containerId, rows, emptyText) {
+  const max = Math.max(1, ...rows.map(row => row.value));
+  const container = document.getElementById(containerId);
+  container.innerHTML = rows.map((row, i) => `<div class="bar-row" data-i="${i}">
+      <span class="bar-label">${row.labelHtml}</span>
+      <span class="bar-track"><span class="bar" style="width: ${(row.value / max * 100).toFixed(1)}%"></span></span>
+      <span class="bar-value">${row.valueHtml ?? formatNumber(row.value)}</span>
+    </div>`).join('') || `<p class="note">${emptyText}</p>`;
+  container.querySelectorAll('.bar-row').forEach(el => addTooltip(el, () => rows[el.dataset.i].tooltip));
+  container.querySelectorAll('button[data-key]').forEach(button => { button.onclick = () => selectNode(button.dataset.key, true); });
+}
+
+function topRows(sideOf, otherSide) {
+  return net.nodes
+    .filter(node => node[sideOf].size > 0)
+    .sort((a, b) => b[sideOf].size - a[sideOf].size || b.pairs - a.pairs)
+    .slice(0, TOP_SHOWN)
+    .map(node => ({
+      labelHtml: typeof d3 === 'undefined' ? primaryNameHtml(node.info) : `<button type="button" class="linklike" data-key="${escapeHtml(node.key)}">${primaryNameHtml(node.info)}</button>`,
+      value: node[sideOf].size,
+      tooltip: `<strong>${plural(node[sideOf].size, 'taxon', 'taxa')}</strong> <span class="muted">${otherSide}</span><br>${primaryNameHtml(node.info)}<br><span class="muted">${plural(node.pairs, 'pair')}</span>`,
+    }));
+}
+
+function renderTopLists() {
+  // The food web normally builds the nodes; without D3 they're built here.
+  if (typeof d3 === 'undefined') Object.assign(net, buildNetwork(state.filtered, state.level));
+  const levelText = document.getElementById('group-level').selectedOptions[0].textContent.toLowerCase();
+  document.getElementById('top-eaters-note').textContent = `Number of food taxa each consumer eats, grouped by ${levelText}. Select one to find it in the food web.`;
+  document.getElementById('top-foods-note').textContent = `Number of consumer taxa that eat each food, grouped by ${levelText}.`;
+  renderBars('top-eaters', topRows('foods', 'eaten'), 'No pairs match these filters.');
+  renderBars('top-foods', topRows('eaters', 'eat it'), 'No pairs match these filters.');
+}
+
+function renderFeedingBars() {
+  const byKind = groupBy(state.filtered, p => p.feeding);
+  const rows = Object.entries(FEEDING).filter(([kind]) => byKind.has(kind)).map(([kind, label]) => {
+    const pairs = byKind.get(kind);
+    return {
+      labelHtml: escapeHtml(label),
+      value: pairs.length,
+      tooltip: `<strong>${plural(pairs.length, 'pair')}</strong> <span class="muted">${Math.round(pairs.length / state.filtered.length * 100)}%</span><br>${escapeHtml(label)}`,
+    };
+  }).sort((a, b) => b.value - a.value);
+  renderBars('feeding-bars', rows, 'No pairs match these filters.');
+}
+
+function renderMonths() {
+  const counts = MONTHS.map(() => 0);
+  let undated = 0;
+  for (const pair of state.filtered) {
+    const month = Number(pair.observedOn?.slice(5, 7));
+    if (month) counts[month - 1]++;
+    else undated++;
+  }
+  const max = Math.max(1, ...counts);
+  const peak = counts.indexOf(Math.max(...counts));
+  const chart = document.getElementById('month-chart');
+  chart.innerHTML = counts.map((count, i) => `<div class="month${count ? '' : ' zero'}" tabindex="0" role="img" aria-label="${MONTHS[i]}: ${plural(count, 'pair')}">
+      ${i === peak && count ? `<span class="month-max" style="bottom: ${(count / max * 100).toFixed(1)}%" aria-hidden="true">${formatNumber(count)}</span>` : ''}
+      <span class="month-bar" style="height: ${(count / max * 100).toFixed(1)}%"></span>
+    </div>`).join('');
+  chart.querySelectorAll('.month').forEach((el, i) => addTooltip(el, () => `<strong>${plural(counts[i], 'pair')}</strong><br>${MONTHS[i]}`));
+  const note = chart.parentElement.querySelector('.note');
+  note.textContent = `All years combined, by the date the eater was observed.${undated ? ` ${plural(undated, 'pair')} with no date ${undated === 1 ? 'isn’t' : 'aren’t'} shown.` : ''} Hover or focus a month for its count.`;
+}
+
+// ----- Pair table ------------------------------------------------------------
+let pairsShowingAll = false;
+
+function personHtml(pair) {
+  const logins = [...new Set([pair.eater.user.login, pair.food.user.login])];
+  return logins.map(login => `<a href="${personUrl(login)}">${escapeHtml(login)}</a>`).join('<br>');
+}
+
+function tablePairs() {
+  const status = document.getElementById('pairs-status').value;
+  return state.filtered.filter(p => !status || p.status === status);
+}
+
+function renderPairsTable() {
+  const pairs = tablePairs()
+    .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || (b.observedOn ?? '').localeCompare(a.observedOn ?? ''));
+  document.getElementById('pairs-heading').textContent = `Pairs (${formatNumber(pairs.length)})`;
+  const table = document.getElementById('pairs-table');
+  if (pairs.length === 0) {
+    table.innerHTML = '<tbody><tr><td class="zero">No pairs match these filters.</td></tr></tbody>';
+    document.getElementById('pairs-more').hidden = true;
+    return;
+  }
+  const rows = pairs.map((p, i) => `<tr${i >= PAIRS_SHOWN ? ' class="extra"' : ''}>
+      <td data-value="${escapeHtml(taxonLabel(infoOf(p.food.taxon)))}">${obsCellHtml(p.food)}</td>
+      <td data-value="${escapeHtml(taxonLabel(infoOf(p.eater.taxon)))}">${obsCellHtml(p.eater)}</td>
+      <td>${escapeHtml(FEEDING[p.feeding])}</td>
+      <td class="nowrap" data-value="${escapeHtml(p.observedOn ?? '')}">${escapeHtml(p.observedOn ?? 'Unknown')}</td>
+      <td>${personHtml(p)}</td>
+      <td data-value="${STATUS_ORDER.indexOf(p.status)}">${statusLabelHtml(p.status)}${p.issues.length ? `<ul class="issues">${p.issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}</ul>` : ''}</td>
+    </tr>`).join('');
+  table.classList.toggle('show-all', pairsShowingAll);
+  table.innerHTML = `<thead><tr>
+      <th scope="col" data-sort="text">Food</th>
+      <th scope="col" data-sort="text">Eater</th>
+      <th scope="col" data-sort="text">Feeding type</th>
+      <th scope="col" data-sort="date">Observed</th>
+      <th scope="col" data-sort="text">Observer</th>
+      <th scope="col" data-sort="number">Status</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>`;
+  // The collapsed list shows the first rows in whatever order the table is sorted.
+  makeSortable(table, sorted => sorted.forEach((row, i) => row.classList.toggle('extra', i >= PAIRS_SHOWN)));
+
+  const more = document.getElementById('pairs-more');
+  more.hidden = pairs.length <= PAIRS_SHOWN;
+  more.textContent = pairsShowingAll ? `Show the first ${PAIRS_SHOWN}` : `Show all ${formatNumber(pairs.length)} pairs`;
+  more.onclick = () => {
+    pairsShowingAll = table.classList.toggle('show-all');
+    more.textContent = pairsShowingAll ? `Show the first ${PAIRS_SHOWN}` : `Show all ${formatNumber(pairs.length)} pairs`;
+  };
+}
+
+function setupPairsTable() {
+  const select = document.getElementById('pairs-status');
+  select.insertAdjacentHTML('beforeend', STATUS_ORDER.map(status => `<option value="${status}">${escapeHtml(STATUS[status].label)}</option>`).join(''));
+  select.onchange = renderPairsTable;
+  // "list" links in the progress legend, and the link in the problems note, pick a status.
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a[data-status], #show-tagging');
+    if (!link) return;
+    select.value = link.dataset.status ?? 'tagging';
+    renderPairsTable();
+  });
+  document.getElementById('download-pairs').onclick = () => downloadCsv(`who-eats-whom-pairs-${today()}.csv`, PAIR_CSV_COLUMNS, tablePairs());
+  document.getElementById('download-edges').onclick = () => downloadCsv(`who-eats-whom-food-web-${state.level}-${today()}.csv`, EDGE_CSV_COLUMNS, net.links);
+}
+
+// ----- Problems ----------------------------------------------------------------
+function problemText(problem) {
+  switch (problem.kind) {
+    case 'no-link': return 'No partner observation URL';
+    case 'not-found': return `Partner observation ${problem.detail} not found (deleted, or a typo in the URL)`;
+    case 'same-role': return 'Both observations have the same role';
+    default: return 'The partner URL is this observation';
+  }
+}
+
+function renderProblems() {
+  const heading = document.getElementById('problems-heading');
+  heading.textContent = `Tagged observations that couldn't be paired (${formatNumber(state.problems.length)})`;
+  const table = document.getElementById('problems-table');
+  if (state.problems.length === 0) {
+    table.innerHTML = '<tbody><tr><td class="zero">None. Every tagged observation links to a partner.</td></tr></tbody>';
+    return;
+  }
+  const roleText = obs => fieldValue(obs, ROLE_FIELD_ID) ?? '';
+  table.innerHTML = `<thead><tr>
+      <th scope="col" data-sort="text">Observation</th>
+      <th scope="col" data-sort="text">Role</th>
+      <th scope="col" data-sort="text" aria-sort="ascending">Problem</th>
+      <th scope="col">Partner field</th>
+      <th scope="col" data-sort="text">Observer</th>
+    </tr></thead>
+    <tbody>${[...state.problems].sort((a, b) => a.kind.localeCompare(b.kind)).map(problem => {
+      const detail = problem.kind === 'same-role'
+        ? `<a href="${observationUrl(problem.partner.id)}">${problem.partner.taxon ? primaryNameHtml(infoOf(problem.partner.taxon)) : `Observation ${problem.partner.id}`}</a> is also “${escapeHtml(roleText(problem.partner))}”`
+        : problem.detail ? `<code>${escapeHtml(fieldValue(problem.obs, PARTNER_FIELD_ID))}</code>` : '<span class="zero">Empty</span>';
+      return `<tr>
+        <td data-value="${escapeHtml(taxonLabel(infoOf(problem.obs.taxon)))}">${obsCellHtml(problem.obs)}</td>
+        <td>${escapeHtml(roleText(problem.obs))}</td>
+        <td data-value="${escapeHtml(problem.kind)}">${escapeHtml(problemText(problem))}</td>
+        <td>${detail}</td>
+        <td><a href="${personUrl(problem.obs.user.login)}">${escapeHtml(problem.obs.user.login)}</a></td>
+      </tr>`;
+    }).join('')}</tbody>`;
+  makeSortable(table);
+}
+
+// ----- CSV export --------------------------------------------------------------
+const obsColumns = (prefix, obsOf) => [
+  [`${prefix}_observation_id`, p => obsOf(p).id],
+  [`${prefix}_observation_url`, p => observationUrl(obsOf(p).id)],
+  [`${prefix}_taxon_id`, p => obsOf(p).taxon?.id],
+  [`${prefix}_taxon_name`, p => obsOf(p).taxon?.name],
+  [`${prefix}_taxon_rank`, p => obsOf(p).taxon?.rank],
+  [`${prefix}_common_name`, p => obsOf(p).taxon?.preferred_common_name],
+  [`${prefix}_group`, p => GROUPS[groupOf(obsOf(p).taxon)]],
+  [`${prefix}_quality_grade`, p => obsOf(p).quality_grade],
+  [`${prefix}_observed_on`, p => obsOf(p).observed_on],
+  [`${prefix}_observer_login`, p => obsOf(p).user.login],
+];
+
+const PAIR_CSV_COLUMNS = [
+  ['status', p => STATUS[p.status].label],
+  ['issues', p => p.issues.join('; ')],
+  ['feeding_type', p => FEEDING[p.feeding]],
+  ['feeding_field_value', p => p.feedingValue],
+  ...obsColumns('food', p => p.food),
+  ...obsColumns('eater', p => p.eater),
+  // The eater's coordinates; obscured ones are iNaturalist's public, randomized point.
+  ['eater_latitude', p => p.eater.location?.split(',')[0]],
+  ['eater_longitude', p => p.eater.location?.split(',')[1]],
+  ['eater_coordinates_obscured', p => (p.eater.obscured ? 'true' : 'false')],
+];
+
+const EDGE_CSV_COLUMNS = [
+  ...['food', 'eater'].flatMap(side => [
+    [`${side}_taxon_id`, l => (side === 'food' ? l.from : l.to).info?.id],
+    [`${side}_taxon_name`, l => (side === 'food' ? l.from : l.to).info?.name ?? 'Unidentified'],
+    [`${side}_taxon_rank`, l => (side === 'food' ? l.from : l.to).info?.rank],
+    [`${side}_common_name`, l => (side === 'food' ? l.from : l.to).info?.common],
+    [`${side}_group`, l => GROUPS[(side === 'food' ? l.from : l.to).group]],
+  ]),
+  ['feeding_types', l => [...new Set(l.pairs.map(p => FEEDING[p.feeding]))].join('; ')],
+  ['pairs', l => l.pairs.length],
+  ['pairs_ready_for_who_eats_whom', l => l.pairs.filter(p => p.status === 'ready').length],
+  ['observation_ids', l => pairObsIds(l.pairs).join(' ')],
+];
+
+function csvCell(value) {
+  let text = String(value ?? '');
+  // Keep spreadsheet apps from treating names that start with = + - @ as formulas. Plain numbers like -83.5 are safe.
+  if (/^[=+\-@]/.test(text) && !/^-?\d+(\.\d+)?$/.test(text)) text = `'${text}`;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadCsv(filename, columns, rows) {
+  const lines = [
+    columns.map(([heading]) => heading).join(','),
+    ...rows.map(row => columns.map(([, valueOf]) => csvCell(valueOf(row))).join(',')),
+  ];
+  // The byte-order mark lets Excel read accented names correctly.
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+// ----- Main ----------------------------------------------------------------------
+async function run(params) {
+  state.apiParams = Object.fromEntries([...params].filter(([key]) => !RESERVED_PARAMS.has(key) && !VIEW_PARAMS.has(key)));
+  const { seeds, extra, byId, byUuid } = await loadObservations(state.apiParams);
+  if (seeds.length === 0) {
+    setStatus('No observations matching this search have the Who Eats Whom field “ID meant for "eater" or organism being eaten?”.');
+    return;
+  }
+  taxonomy = await loadTaxonomy([...byId.values()]);
+  const { pairs, problems } = buildPairs(seeds, byId, byUuid);
+  Object.assign(state, { seeds, pairs, problems });
+
+  renderSummary(extra.length);
+  renderReadiness();
+  renderFilters();
+  setupNamesSwitch();
+  setupFlows();
+  setupPairsTable();
+  renderProblems();
+
+  const loadedAt = new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  setStatus(`Loaded ${plural(seeds.length + extra.length, 'observation')} from iNaturalist on ${loadedAt}.`);
+  document.getElementById('dashboard').hidden = false;
+  // The food web measures its container, so it's drawn once the dashboard is visible.
+  applyFilters();
+}
+
+const params = new URLSearchParams(location.search);
+readParamsIntoForm(params);
+if ([...params.keys()].some(key => !RESERVED_PARAMS.has(key) && !VIEW_PARAMS.has(key))) {
+  const button = form.querySelector('button');
+  button.disabled = true;
+  run(params)
+    .catch(err => { console.error(err); setStatus(err.message, true); })
+    .finally(() => { button.disabled = false; });
+} else {
+  setStatus('Enter at least one search filter, or try one of the examples.');
+}
+</script>
+</body>
+</html>

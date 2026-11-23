@@ -11,6 +11,7 @@ Inspired by [@jumear](https://github.com/jumear)'s excellent [stirfry](https://g
 | Tool | What it does | Docs |
 |:-----|:-------------|:-----|
 | [Smokies ATBI new records](https://willkuhn.github.io/random-iNat-tools/tools/smokies-atbi-new-records/) | Dashboard of iNaturalist observations flagged as new records for Great Smoky Mountains National Park's All Taxa Biodiversity Inventory: counts by stage, rank, and county, a map, top observers, and the confirmation queue. | [docs](https://github.com/willkuhn/random-iNat-tools/tree/main/tools/smokies-atbi-new-records) |
+| [Who Eats Whom food web](https://willkuhn.github.io/random-iNat-tools/tools/who-eats-whom-food-web/) | Food web, Sankey and radial flow diagrams, and research-grade progress for observations tagged for the Who Eats Whom project, at every quality grade, for any observer, project, place, or other iNaturalist search. | [docs](https://github.com/willkuhn/random-iNat-tools/tree/main/tools/who-eats-whom-food-web) |
 
 ## Using the tools
 
