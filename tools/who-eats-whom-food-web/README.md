@@ -24,8 +24,20 @@ The Who Eats Whom website only uses pairs in which both observations are researc
 - **Pairs by feeding type** and **by month observed** (all years combined).
 - **Pairs:** a sortable table of every pair with photos, quality grades, feeding type, date, observer, status, and exactly what's holding each one back. Filter it by status and download it as a CSV.
 - **Tagged observations that couldn't be paired:** observations with the role field but no usable partner link, such as an empty or mistyped URL, a link to the observation itself, or two linked observations with the same role.
+- **Pairs from other records (optional):** other Who Eats Whom pairs involving the same taxa, from any observer, to fill in the food web. See below.
 
 The filter row above the food web applies to everything below it: show all tagged pairs or only those ready for Who Eats Whom, pick feeding types, choose how taxa are grouped (as identified, species, genus, family, or order), and flip the **Names** switch between common and scientific names. The switch changes every name on the page: the food web's labels, the flow diagrams, the lists, and the tables, where the other name appears underneath. Taxa with no common name always show their scientific name. Toggling "Only pairs ready for Who Eats Whom" shows roughly what the Who Eats Whom website would show for the same search.
+
+### Filling in from other records
+
+A search shows only its own pairs, so the food web for one observer or one project is a slice of what's known about those species. **Add pairs from other records**, in the filter row, fills it in with other Who Eats Whom pairs involving the same taxa:
+
+- **Between taxa already shown** adds only pairs whose two species are both already in the web: links you haven't recorded between taxa you have.
+- **Everything these taxa eat or are eaten by** adds every other pair involving them, bringing in new partners too.
+
+Other records are found by taxon from the search's pairs: species are matched along with their subspecies, and taxa identified only to genus (or a rank between genus and species, such as a complex) are matched exactly, so a record left at *Bombus* finds other records left at *Bombus*, not every bumble bee. Taxa identified above genus are skipped as too broad. They come from anywhere on iNaturalist, or from the search's place when it has a `place_id`. In the food web, links found only in other records are blue and taxa found only in them are hollow circles; tooltips, the detail lists, and the Sankey and radial tooltips count them separately, the pair table marks them "From other records", and both CSVs have a column for them. The summary tiles, the progress bar, and the unpaired list above the filters always describe the search alone.
+
+The other records load only when one of these is chosen, and only once; switching between the two is instant.
 
 ## How to use it
 
@@ -42,7 +54,7 @@ The search picks the tagged observations; their partners are then loaded whereve
 
 ## URL parameters
 
-Every parameter in the page's URL except `names` is passed to iNaturalist's [observation search](https://api.inaturalist.org/v2/docs/#/Observations/get_observations) as is, plus `field:ID meant for "eater" or organism being eaten?=` (any value), which limits the search to observations tagged for Who Eats Whom. The search boxes cover the common ones:
+Every parameter in the page's URL except `names` and `more` is passed to iNaturalist's [observation search](https://api.inaturalist.org/v2/docs/#/Observations/get_observations) as is, plus `field:ID meant for "eater" or organism being eaten?=` (any value), which limits the search to observations tagged for Who Eats Whom. The search boxes cover the common ones:
 
 | Parameter | Meaning | Example |
 |:----------|:--------|:--------|
@@ -52,6 +64,7 @@ Every parameter in the page's URL except `names` is passed to iNaturalist's [obs
 | `taxon_id` | Taxon ID; only tagged observations of this taxon are searched | `47157` |
 | `d1`, `d2` | Observed on or after, on or before | `2025-01-01` |
 | `names` | `scientific` to show scientific names (the Names switch). A display setting: it isn't sent to iNaturalist. | `scientific` |
+| `more` | Add pairs from other records: `links` (between taxa already shown) or `all` (everything these taxa eat or are eaten by). Loads them when the page opens. | `links` |
 | anything else | Any other observation search parameter, such as `month`, `year`, `quality_grade`, `iconic_taxa`, `place_id` lists, or `locale` (for common names in another language) | `month=6,7` |
 
 At least one parameter is needed: all of Who Eats Whom is more than 25,000 tagged observations, past what the tool will fetch (see below). The tool sets `fields`, `per_page`, `order_by`, `order`, and `id_above` itself and ignores them in the URL.
@@ -77,8 +90,10 @@ The checks follow the Who Eats Whom project's instructions (both observations in
   - `GET /v2/observations` with `field:ID meant for "eater" or organism being eaten?=` and your search parameters, paged with `order_by=id&id_above=...`
   - `GET /v2/observations?id=...` for partner observations outside the search (and `GET /v2/observations/{uuids}` for the rare partner linked by UUID)
   - `GET /v2/taxa?id=...&rank=kingdom,phylum,class,order,family,genus,species` for the names and ranks of the observations' higher taxa, so taxa can be grouped by family, order, and so on. Only ranked taxa that aren't already known are requested.
+  - Only when pairs from other records are asked for: `GET /v2/observations` with the role field and `taxon_id=...` (species, 150 per request) or `exact_taxon_id=...` (genus-level IDs), plus `place_id` when the search has one, and then the same partner and taxa lookups for what that finds. When the search is a single observer, `not_user_id` skips their observations, which are already loaded.
 - **Fields:** the `fields` parameter requests only what the dashboard uses, about 2 KB per observation instead of roughly 100 KB for a full record.
 - **Requests per load:** one per 200 tagged observations, one per 200 partners outside the search, and one per 200 higher taxa, sent about one second apart. For one person's 1,436 tagged observations that's 16 requests (about 20 seconds); for a project with 450, 8.
+- **Pairs from other records** take more: for those 1,436 observations, 30 more requests (2,230 other tagged observations, their 1,566 partners, and their taxa); for the 450-observation project, 21. The total of other records is capped at 10,000.
 - **Searches over 10,000 observations are refused.** Narrow the search, or use iNaturalist's [observation export](https://www.inaturalist.org/observations/export).
 - **Sign-in:** not needed. All data is public.
 
@@ -100,7 +115,8 @@ The checks follow the Who Eats Whom project's instructions (both observations in
 - **"Month observed"** uses the eater's date, all years combined.
 - **Links that list observation IDs** (such as "3 pairs") are left off past 400 observations to keep the URL a safe length.
 - **The diagrams are for looking.** Their circles and bands can't all be reached with the keyboard; the tables and CSVs hold the same information. The search box and the lists under a selected taxon work from the keyboard.
-- **The food web is rebuilt** when filters change, keeping taxa where they were; use **Fit** to see the whole web again.
+- **The food web is rebuilt** when filters change, keeping taxa where they were (new ones start next to a partner); use **Fit** to see the whole web again.
+- **Other records are matched by taxon as identified now.** "Between taxa already shown" compares species, whatever the food web's grouping. Common species can bring in many records: a honey bee in the search pulls in honey bee pairs from everywhere, so "everything" mode can grow the web a lot.
 - The data reflect iNaturalist as it stands when the page loads; reload to refresh. iNaturalist's search index can lag a few minutes behind edits.
 
 ## Inspiration

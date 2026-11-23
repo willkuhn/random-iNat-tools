@@ -31,6 +31,8 @@
     --status-tagging: #ec835a;
     --net-link: rgba(31, 36, 33, 0.32);
     --net-link-hl: rgba(31, 36, 33, 0.85);
+    /* Links found only in other people's records. */
+    --net-outside: rgba(47, 111, 159, 0.6);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -49,6 +51,7 @@
       --grp-vertebrates: #3987e5;
       --net-link: rgba(227, 231, 226, 0.3);
       --net-link-hl: rgba(227, 231, 226, 0.85);
+      --net-outside: rgba(127, 184, 230, 0.55);
     }
   }
   * { box-sizing: border-box; }
@@ -199,6 +202,8 @@
   button.switch[aria-checked="true"]::after { transform: translateX(1.2rem); }
   @media (prefers-reduced-motion: reduce) { button.switch::after { transition: none; } }
   .filters .shown { align-self: center; margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+  .filters .more-note { max-width: 34rem; margin: 0.2rem 0 0; color: var(--text-muted); font-size: 0.85rem; }
+  .filters .more-note.error { color: var(--error); }
 
   /* Food web */
   .net-controls { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; align-items: end; margin: 0 0 0.6rem; }
@@ -215,12 +220,21 @@
   .net-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 1rem; color: var(--text-muted); text-align: center; }
   .link { stroke: var(--net-link); marker-end: url(#arrow); }
   .link.pending { stroke-dasharray: 4 3; }
+  .link.outside { stroke: var(--net-outside); marker-end: url(#arrow-outside); }
   .link.hl { stroke: var(--net-link-hl); marker-end: url(#arrow-hl); }
   .arrow { fill: var(--net-link); }
   .arrow-hl { fill: var(--net-link-hl); }
+  .arrow-outside { fill: var(--net-outside); }
   .node { cursor: pointer; }
   .node circle { stroke: var(--bg); stroke-width: 1.5px; }
   .node.selected circle { stroke: var(--text); stroke-width: 2.5px; }
+  /* Taxa found only in other people's records are drawn hollow, outlined in their group's color. */
+  .node.outside circle { fill: var(--bg); stroke-width: 2px; }
+  .node.outside circle.grp-plants { stroke: var(--grp-plants); }
+  .node.outside circle.grp-invertebrates { stroke: var(--grp-invertebrates); }
+  .node.outside circle.grp-vertebrates { stroke: var(--grp-vertebrates); }
+  .node.outside circle.grp-other { stroke: var(--grp-other); }
+  .node.outside.selected circle { stroke: var(--text); stroke-width: 2.5px; }
   .net-label { fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-linejoin: round; pointer-events: none; }
   .net-label.off { display: none; }
   .has-selection .node:not(.hl) { opacity: 0.15; }
@@ -233,8 +247,10 @@
   .legend li { display: inline-flex; align-items: center; gap: 0.4rem; }
   .swatch { flex: none; width: 12px; height: 12px; border-radius: 50%; }
   .swatch.square { border-radius: 3px; }
+  .swatch.hollow { background: transparent; border: 2px solid var(--text-muted); }
   .line-key { flex: none; width: 26px; height: 0; border-top: 2px solid var(--net-link-hl); }
   .line-key.pending { border-top-style: dashed; }
+  .line-key.outside { border-top-color: var(--net-outside); }
 
   .net-detail { margin: 1rem 0 0; padding: 1rem; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; }
   .net-detail > p:only-child { margin: 0; color: var(--text-muted); }
@@ -410,6 +426,15 @@
       <fieldset>
         <legend>Pairs</legend>
         <div class="options" id="filter-ready"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Add pairs from other records</legend>
+        <div class="options" id="filter-more">
+          <label><input type="radio" name="more" value="" checked> None</label>
+          <label><input type="radio" name="more" value="links"> Between taxa already shown <span data-count="links"></span></label>
+          <label><input type="radio" name="more" value="all"> Everything these taxa eat or are eaten by <span data-count="all"></span></label>
+        </div>
+        <p class="more-note" id="more-note" aria-live="polite"></p>
       </fieldset>
       <fieldset>
         <legend>Feeding type</legend>
@@ -675,7 +700,15 @@ function escapeHtml(text) {
 // Parameters the tool sets itself. Everything else in the page URL is passed to the iNaturalist API as is.
 const RESERVED_PARAMS = new Set(['fields', 'per_page', 'page', 'order', 'order_by', 'id_above', 'only_id']);
 // Display settings kept in the URL so shared links look the same. They aren't sent to iNaturalist.
-const VIEW_PARAMS = new Set(['names']);
+const VIEW_PARAMS = new Set(['names', 'more']);
+
+// Updates a display setting in the address bar without reloading the page.
+function setViewParam(key, value) {
+  const url = new URL(location.href);
+  if (value) url.searchParams.set(key, value);
+  else url.searchParams.delete(key);
+  history.replaceState(null, '', url);
+}
 const namedInputs = new Set([...form.elements].map(field => field.name).filter(Boolean));
 
 // Settings live in the URL so every result can be bookmarked and shared. Parameters without
@@ -846,37 +879,40 @@ async function loadObservations(apiParams) {
   const byId = new Map(seeds.map(obs => [obs.id, obs]));
   const byUuid = new Map(seeds.map(obs => [obs.uuid, obs]));
   // Partners outside the search (another observer, place, or project) are looked up by ID.
-  const refs = [...new Set(seeds.flatMap(partnerRefs))];
+  const extra = await loadPartners(seeds, byId, byUuid);
+  return { seeds, extra, byId, byUuid };
+}
+
+// Loads the partners these observations link to that aren't loaded yet, and adds them to the maps.
+async function loadPartners(observations, byId, byUuid, report = setStatus) {
+  const refs = [...new Set(observations.flatMap(partnerRefs))];
   const missingIds = refs.filter(ref => !isUuid(ref) && !byId.has(Number(ref))).map(Number);
   const missingUuids = refs.filter(ref => isUuid(ref) && !byUuid.has(ref));
-  let extra = [];
-  if (missingIds.length || missingUuids.length) {
-    setStatus(`Loading ${plural(missingIds.length + missingUuids.length, 'partner observation')} from outside the search…`);
-    extra = await inatFetchByIds('/v2/observations', missingIds, { fields: OBS_FIELDS });
-    // UUIDs go in the path instead; this is rare.
-    for (let i = 0; i < missingUuids.length; i += 30) {
-      const data = await inatFetch(`/v2/observations/${missingUuids.slice(i, i + 30).join(',')}`, { fields: OBS_FIELDS });
-      extra.push(...data.results);
-    }
-    for (const obs of extra) {
-      byId.set(obs.id, obs);
-      byUuid.set(obs.uuid, obs);
-    }
+  if (!missingIds.length && !missingUuids.length) return [];
+  report(`Loading ${plural(missingIds.length + missingUuids.length, 'partner observation')}…`);
+  const found = await inatFetchByIds('/v2/observations', missingIds, { fields: OBS_FIELDS });
+  // UUIDs go in the path instead; this is rare.
+  for (let i = 0; i < missingUuids.length; i += 30) {
+    const data = await inatFetch(`/v2/observations/${missingUuids.slice(i, i + 30).join(',')}`, { fields: OBS_FIELDS });
+    found.push(...data.results);
   }
-  return { seeds, extra, byId, byUuid };
+  for (const obs of found) {
+    byId.set(obs.id, obs);
+    byUuid.set(obs.uuid, obs);
+  }
+  return found;
 }
 
 // Names and ranks for every taxon the observations fall in, so taxa can be grouped by family, order, and so on.
 // Only ranked ancestors (kingdom, phylum, ..., species) are fetched, and only ones not already known.
-async function loadTaxonomy(observations) {
-  const taxa = new Map();
+async function loadTaxonomy(observations, taxa = new Map(), report = setStatus) {
   const addTaxon = t => taxa.set(t.id, { id: t.id, name: t.name, rank: t.rank, rankLevel: t.rank_level, common: t.preferred_common_name ?? null });
   for (const obs of observations) if (obs.taxon) addTaxon(obs.taxon);
   const needed = [...new Set(observations.flatMap(obs => obs.taxon?.ancestor_ids ?? []))]
     .filter(id => id !== LIFE_TAXON_ID && !taxa.has(id));
   const requests = Math.ceil(needed.length / TAXA_PER_LOOKUP);
   for (let i = 0; i < needed.length; i += TAXA_PER_LOOKUP) {
-    setStatus(`Looking up higher taxa… ${i / TAXA_PER_LOOKUP + 1} of ${requests}`);
+    report(`Looking up higher taxa… ${i / TAXA_PER_LOOKUP + 1} of ${requests}`);
     const data = await inatFetch('/v2/taxa', {
       id: needed.slice(i, i + TAXA_PER_LOOKUP).join(','),
       rank: GROUP_RANKS.map(([rank]) => rank).join(','),
@@ -886,6 +922,109 @@ async function loadTaxonomy(observations) {
     data.results.forEach(addTaxon);
   }
   return taxa;
+}
+
+// ----- Pairs from other records ------------------------------------------------
+// Other Who Eats Whom observations of the taxa in the search's pairs, and their partners, loaded only on request.
+// Species are matched along with their subspecies. Taxa identified only to genus (or a rank between genus and
+// species, like a complex) are matched exactly, so "Bombus" finds other records left at Bombus, not every bumble bee.
+// Anything coarser is too broad to be useful and is skipped.
+const OUTSIDE_TAXA_PER_QUERY = 150;
+const outside = { status: 'idle', pairs: [], linkPairs: [], found: 0, message: '', promise: null };
+
+const speciesKey = obs => groupTaxon(obs.taxon, 'species').key;
+
+function outsideScope() {
+  const scope = {};
+  // A regional food web stays regional.
+  if (state.apiParams.place_id) scope.place_id = state.apiParams.place_id;
+  // When the search is just one observer, all their tagged observations are loaded already.
+  const filters = Object.keys(state.apiParams).filter(key => !['locale', 'preferred_place_id'].includes(key));
+  if (filters.length === 1 && filters[0] === 'user_id') scope.not_user_id = state.apiParams.user_id;
+  return scope;
+}
+
+async function loadOutside(report) {
+  const speciesIds = new Set();
+  const exactIds = new Set();
+  for (const obs of state.pairs.flatMap(p => [p.eater, p.food])) {
+    const taxon = obs.taxon;
+    if (!taxon) continue;
+    if (taxon.rank_level <= 10) speciesIds.add(groupTaxon(taxon, 'species').info?.id ?? taxon.id);
+    else if (taxon.rank_level <= 20) exactIds.add(taxon.id);
+  }
+  const queries = [];
+  for (const [ids, param] of [[speciesIds, 'taxon_id'], [exactIds, 'exact_taxon_id']]) {
+    const list = [...ids];
+    for (let i = 0; i < list.length; i += OUTSIDE_TAXA_PER_QUERY) queries.push({ [param]: list.slice(i, i + OUTSIDE_TAXA_PER_QUERY).join(',') });
+  }
+
+  const scope = outsideScope();
+  const found = new Map();
+  let expected = 0;
+  for (const [i, query] of queries.entries()) {
+    let counted = false;
+    const results = await inatFetchAll('/v2/observations', { [ROLE_PARAM]: '', ...query, ...scope, fields: OBS_FIELDS }, (loaded, total) => {
+      if (!counted) {
+        counted = true;
+        expected += total;
+        if (expected > MAX_RESULTS) throw new Error(`more than ${formatNumber(MAX_RESULTS)} other records share these taxa. Narrow the search first.`);
+      }
+      report(`Looking for other records of these taxa… ${i + 1} of ${queries.length} (${formatNumber(found.size + loaded)} found)`);
+    });
+    for (const obs of results) if (!state.byId.has(obs.id)) found.set(obs.id, obs);
+  }
+
+  const others = [...found.values()];
+  for (const obs of others) {
+    state.byId.set(obs.id, obs);
+    state.byUuid.set(obs.uuid, obs);
+  }
+  const partners = await loadPartners(others, state.byId, state.byUuid, report);
+  await loadTaxonomy([...others, ...partners], taxonomy, report);
+
+  const known = new Set(state.pairs.map(p => p.key));
+  outside.pairs = buildPairs(others, state.byId, state.byUuid).pairs.filter(p => !known.has(p.key));
+  for (const pair of outside.pairs) pair.outside = true;
+  const shown = new Set(state.pairs.flatMap(p => [speciesKey(p.eater), speciesKey(p.food)]));
+  outside.linkPairs = outside.pairs.filter(p => shown.has(speciesKey(p.eater)) && shown.has(speciesKey(p.food)));
+  outside.found = others.length;
+}
+
+// Loads the other records once; both choices under "Add pairs from other records" use the same data.
+function ensureOutside() {
+  if (!outside.promise) {
+    outside.status = 'loading';
+    outside.message = 'Looking for other records of these taxa…';
+    renderMoreNote();
+    outside.promise = loadOutside(message => { outside.message = message; renderMoreNote(); })
+      .then(() => { outside.status = 'loaded'; })
+      .catch(err => {
+        console.error(err);
+        outside.status = 'error';
+        outside.message = err.message;
+        outside.promise = null;
+      });
+  }
+  return outside.promise;
+}
+
+// The pairs the filters choose from: the search's, plus any other records asked for.
+function activePairs() {
+  if (!state.more || outside.status !== 'loaded') return state.pairs;
+  return [...state.pairs, ...(state.more === 'all' ? outside.pairs : outside.linkPairs)];
+}
+
+function renderMoreNote() {
+  const note = document.getElementById('more-note');
+  const where = state.apiParams.place_id ? `in place ${state.apiParams.place_id}, as in the search` : 'from anywhere on iNaturalist';
+  note.classList.toggle('error', outside.status === 'error');
+  note.textContent = {
+    idle: `Other Who Eats Whom pairs involving the same species and genera, ${where}. Loading them takes a few more requests to iNaturalist.`,
+    loading: outside.message,
+    error: `Couldn't add other records: ${outside.message}`,
+    loaded: `${plural(outside.found, 'other tagged observation')} found ${where}, adding up to ${plural(outside.pairs.length, 'pair')}. They're drawn in blue in the food web.`,
+  }[outside.status];
 }
 
 // ----- Pairs -----------------------------------------------------------------
@@ -1110,6 +1249,7 @@ function makeSortable(table, onSort = () => {}) {
 }
 
 // ----- Dashboard state -------------------------------------------------------
+const pageParams = new URLSearchParams(location.search);
 const state = {
   apiParams: {},
   seeds: [],
@@ -1120,13 +1260,19 @@ const state = {
   feeding: new Set(Object.keys(FEEDING)),
   level: 'species',
   // 'common' or 'scientific': which name the whole page shows.
-  names: new URLSearchParams(location.search).get('names') === 'scientific' ? 'scientific' : 'common',
+  names: pageParams.get('names') === 'scientific' ? 'scientific' : 'common',
+  // '', 'links', or 'all': which pairs from other records to add.
+  more: ['links', 'all'].includes(pageParams.get('more')) ? pageParams.get('more') : '',
+  byId: new Map(),
+  byUuid: new Map(),
 };
 
 function applyFilters() {
-  state.filtered = state.pairs.filter(p => (!state.readyOnly || p.status === 'ready') && state.feeding.has(p.feeding));
+  const pairs = activePairs();
+  state.filtered = pairs.filter(p => (!state.readyOnly || p.status === 'ready') && state.feeding.has(p.feeding));
+  updateFilterCounts();
   document.getElementById('filter-shown').textContent =
-    `Showing ${formatNumber(state.filtered.length)} of ${plural(state.pairs.length, 'pair')}`;
+    `Showing ${formatNumber(state.filtered.length)} of ${plural(pairs.length, 'pair')}`;
   renderNetwork();
   renderFlows();
   renderTopLists();
@@ -1194,15 +1340,13 @@ function renderReadiness() {
 }
 
 // ----- Filters ---------------------------------------------------------------
-function renderFilters() {
-  const ready = state.pairs.filter(p => p.status === 'ready').length;
+// The options are built once and only their counts change, so a choice made from the keyboard keeps its focus.
+function setupFilters() {
   document.getElementById('filter-ready').innerHTML = `
-    <label><input type="radio" name="ready" value="all" checked> All tagged pairs (${formatNumber(state.pairs.length)})</label>
-    <label><input type="radio" name="ready" value="ready"> Only pairs ready for Who Eats Whom (${formatNumber(ready)})</label>`;
-  const feedingCounts = groupBy(state.pairs, p => p.feeding);
+    <label><input type="radio" name="ready" value="all" checked> All tagged pairs <span data-count="all"></span></label>
+    <label><input type="radio" name="ready" value="ready"> Only pairs ready for Who Eats Whom <span data-count="ready"></span></label>`;
   document.getElementById('filter-feeding').innerHTML = Object.entries(FEEDING)
-    .filter(([kind]) => feedingCounts.has(kind))
-    .map(([kind, label]) => `<label><input type="checkbox" value="${kind}" checked> ${escapeHtml(label)} (${formatNumber(feedingCounts.get(kind).length)})</label>`)
+    .map(([kind, label]) => `<label data-kind="${kind}"><input type="checkbox" value="${kind}" checked> ${escapeHtml(label)} <span data-count></span></label>`)
     .join('');
 
   document.getElementById('filter-ready').onchange = event => {
@@ -1213,11 +1357,42 @@ function renderFilters() {
     state.feeding = new Set([...document.querySelectorAll('#filter-feeding input:checked')].map(input => input.value));
     applyFilters();
   };
+  document.getElementById('filter-more').onchange = async event => {
+    state.more = event.target.value;
+    setViewParam('more', state.more);
+    if (state.more && outside.status !== 'loaded') {
+      await ensureOutside();
+      if (outside.status === 'error') {
+        state.more = '';
+        setViewParam('more', '');
+      }
+    }
+    applyFilters();
+  };
   document.getElementById('group-level').onchange = event => {
     state.level = event.target.value;
     net.positions.clear();
     applyFilters();
   };
+}
+
+function updateFilterCounts() {
+  const pairs = activePairs();
+  const count = n => `(${formatNumber(n)})`;
+  document.querySelector('#filter-ready [data-count="all"]').textContent = count(pairs.length);
+  document.querySelector('#filter-ready [data-count="ready"]').textContent = count(pairs.filter(p => p.status === 'ready').length);
+  // Feeding types with no pairs are hidden, and keep their tick for when other records bring some in.
+  const byKind = groupBy(pairs, p => p.feeding);
+  for (const label of document.querySelectorAll('#filter-feeding label')) {
+    const n = byKind.get(label.dataset.kind)?.length ?? 0;
+    label.hidden = n === 0;
+    label.querySelector('[data-count]').textContent = count(n);
+  }
+  const loaded = outside.status === 'loaded';
+  document.querySelector('#filter-more [data-count="links"]').textContent = loaded ? count(outside.linkPairs.length) : '';
+  document.querySelector('#filter-more [data-count="all"]').textContent = loaded ? count(outside.pairs.length) : '';
+  for (const input of document.querySelectorAll('#filter-more input')) input.checked = input.value === state.more;
+  renderMoreNote();
 }
 
 // ----- Names switch ----------------------------------------------------------------
@@ -1232,10 +1407,7 @@ function setupNamesSwitch() {
     if (mode === state.names) return;
     state.names = mode;
     show();
-    const url = new URL(location.href);
-    if (mode === 'scientific') url.searchParams.set('names', 'scientific');
-    else url.searchParams.delete('names');
-    history.replaceState(null, '', url);
+    setViewParam('names', mode === 'scientific' ? 'scientific' : '');
     renderNames();
   };
   toggle.onclick = () => set(state.names === 'common' ? 'scientific' : 'common');
@@ -1279,7 +1451,7 @@ function buildNetwork(pairs, level) {
   const nodeFor = obs => {
     const { key, info } = groupTaxon(obs.taxon, level);
     if (!nodes.has(key)) {
-      nodes.set(key, { key, info, group: groupOf(obs.taxon), pairs: 0, obsIds: new Set(), photo: null, foods: new Map(), eaters: new Map() });
+      nodes.set(key, { key, info, group: groupOf(obs.taxon), pairs: 0, outsidePairs: 0, obsIds: new Set(), photo: null, foods: new Map(), eaters: new Map() });
     }
     const node = nodes.get(key);
     node.obsIds.add(obs.id);
@@ -1291,15 +1463,25 @@ function buildNetwork(pairs, level) {
     const food = nodeFor(pair.food);
     const eater = nodeFor(pair.eater);
     food.pairs++;
-    if (eater !== food) eater.pairs++;
+    if (pair.outside) food.outsidePairs++;
+    if (eater !== food) {
+      eater.pairs++;
+      if (pair.outside) eater.outsidePairs++;
+    }
     addTo(food.eaters, eater.key, pair);
     addTo(eater.foods, food.key, pair);
     const id = `${food.key}>${eater.key}`;
     if (!links.has(id)) links.set(id, { id, source: food.key, target: eater.key, from: food, to: eater, pairs: [] });
     links.get(id).pairs.push(pair);
   }
-  for (const link of links.values()) link.ready = link.pairs.some(p => p.status === 'ready');
-  for (const node of nodes.values()) node.r = Math.min(22, 4 + 2 * Math.sqrt(node.pairs));
+  for (const link of links.values()) {
+    link.ready = link.pairs.some(p => p.status === 'ready');
+    link.outside = link.pairs.every(p => p.outside);
+  }
+  for (const node of nodes.values()) {
+    node.r = Math.min(22, 4 + 2 * Math.sqrt(node.pairs));
+    node.outside = node.outsidePairs === node.pairs;
+  }
   // The most-connected nodes get labels first.
   const ranked = [...nodes.values()].sort((a, b) => b.pairs - a.pairs || (b.foods.size + b.eaters.size) - (a.foods.size + a.eaters.size));
   ranked.forEach((node, i) => { node.labelRank = i; });
@@ -1313,7 +1495,8 @@ function setupNetwork() {
   net.svg = svg;
   svg.append('defs').html(`
     <marker id="arrow" viewBox="0 -4 8 8" refX="8" refY="0" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path class="arrow" d="M0,-4L8,0L0,4Z"/></marker>
-    <marker id="arrow-hl" viewBox="0 -4 8 8" refX="8" refY="0" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="arrow-hl" d="M0,-4L8,0L0,4Z"/></marker>`);
+    <marker id="arrow-hl" viewBox="0 -4 8 8" refX="8" refY="0" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="arrow-hl" d="M0,-4L8,0L0,4Z"/></marker>
+    <marker id="arrow-outside" viewBox="0 -4 8 8" refX="8" refY="0" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path class="arrow-outside" d="M0,-4L8,0L0,4Z"/></marker>`);
   net.layer = svg.append('g');
   net.linkLayer = net.layer.append('g');
   net.nodeLayer = net.layer.append('g');
@@ -1406,6 +1589,17 @@ function renderNetwork() {
     const old = net.positions.get(node.key);
     if (old) { node.x = old.x; node.y = old.y; reused++; }
   }
+  // New taxa start next to a partner that's already placed, so they settle in nearby.
+  if (reused) {
+    for (const node of nodes) {
+      if (node.x !== undefined) continue;
+      const near = [...node.foods.keys(), ...node.eaters.keys()].map(key => net.positions.get(key)).find(Boolean);
+      if (near) {
+        node.x = near.x + (Math.random() - 0.5) * 40;
+        node.y = near.y + (Math.random() - 0.5) * 40;
+      }
+    }
+  }
   net.nodes = nodes;
   net.links = links;
   net.byKey = new Map(nodes.map(node => [node.key, node]));
@@ -1425,15 +1619,16 @@ function renderNetwork() {
     .force('collide', d3.forceCollide(node => node.r + 2))
     .stop();
   // Lay the web out before drawing it, rather than animating it into place.
-  const ticks = reused ? 120 : 320;
-  if (reused) net.sim.alpha(0.3);
+  const fresh = nodes.length - reused;
+  const ticks = !reused ? 320 : fresh ? 220 : 120;
+  if (reused) net.sim.alpha(fresh ? 0.5 : 0.3);
   for (let i = 0; i < ticks; i++) net.sim.tick();
   net.sim.on('tick', updatePositions);
 
   net.linkSel = net.linkLayer.selectAll('line')
     .data(drawn, link => link.id)
     .join('line')
-    .attr('class', link => (link.ready ? 'link' : 'link pending'))
+    .attr('class', link => ['link', link.ready ? '' : 'pending', link.outside ? 'outside' : ''].filter(Boolean).join(' '))
     .attr('stroke-width', linkWidth)
     .attr('vector-effect', 'non-scaling-stroke');
 
@@ -1444,6 +1639,7 @@ function renderNetwork() {
       g.append('circle');
       return g;
     });
+  net.nodeSel.attr('class', node => (node.outside ? 'node outside' : 'node'));
   net.nodeSel.select('circle').attr('r', node => node.r).attr('class', node => `grp-${node.group}`);
   net.labelSel = net.labelLayer.selectAll('text')
     .data(nodes, node => node.key)
@@ -1558,7 +1754,7 @@ function nodeTooltipHtml(node) {
   return `<strong>${primaryNameHtml(node.info)}</strong>${alt ? `<br><span class="muted">${alt}</span>` : ''}<br>
     ${escapeHtml(GROUPS[node.group])}<br>
     Eats ${plural(node.foods.size, 'taxon', 'taxa')} · eaten by ${plural(node.eaters.size, 'taxon', 'taxa')}<br>
-    <span class="muted">${plural(node.pairs, 'pair')}</span>`;
+    <span class="muted">${plural(node.pairs, 'pair')}${node.outsidePairs ? `, ${formatNumber(node.outsidePairs)} from other records` : ''}</span>`;
 }
 
 function selectNode(key, zoomTo = false) {
@@ -1606,12 +1802,13 @@ function renderDetail() {
       .sort((a, b) => b.pairs.length - a.pairs.length || taxonLabel(a.other.info).localeCompare(taxonLabel(b.other.info)));
     return `<ul>${rows.map(({ other, pairs }) => {
       const ready = pairs.filter(p => p.status === 'ready').length;
+      const fromOthers = pairs.filter(p => p.outside).length;
       const url = idListUrl(pairObsIds(pairs));
       const count = plural(pairs.length, 'pair');
       const self = other.key === node.key ? ' (same taxon)' : '';
       return `<li>
         <button type="button" class="linklike" data-key="${escapeHtml(other.key)}">${primaryNameHtml(other.info)}</button>${self}
-        <span class="pair-count">${url ? `<a href="${url}">${count}</a>` : count}${ready ? `, ${formatNumber(ready)} ready` : ''}</span>
+        <span class="pair-count">${url ? `<a href="${url}">${count}</a>` : count}${ready ? `, ${formatNumber(ready)} ready` : ''}${fromOthers ? `, ${formatNumber(fromOthers)} from other records` : ''}</span>
       </li>`;
     }).join('')}</ul>`;
   };
@@ -1641,7 +1838,9 @@ function renderLegend() {
     .map(([group, label]) => `<li><span class="swatch grp-${group}"></span>${escapeHtml(label)} (${formatNumber(groups.get(group).length)})</li>`)
     .join('') +
     '<li><span class="line-key"></span>At least one pair ready for Who Eats Whom</li>' +
-    '<li><span class="line-key pending"></span>None ready yet</li>';
+    '<li><span class="line-key pending"></span>None ready yet</li>' +
+    (net.links.some(link => link.outside) ? '<li><span class="line-key outside"></span>Only in other records</li>' : '') +
+    (net.nodes.some(node => node.outside) ? '<li><span class="swatch hollow"></span>Taxon only in other records</li>' : '');
 }
 
 // ----- Flows: Sankey and radial ------------------------------------------------
@@ -1680,18 +1879,19 @@ function buildFlows(pairs, foodRank, eaterRank, top) {
     for (const pair of pairs) {
       const obs = obsOf(pair);
       const { key, info } = groupTaxon(obs.taxon, rank);
-      if (!groups.has(key)) groups.set(key, { key, info, group: groupOf(obs.taxon), count: 0, ready: 0 });
+      if (!groups.has(key)) groups.set(key, { key, info, group: groupOf(obs.taxon), count: 0, ready: 0, outside: 0 });
       const g = groups.get(key);
       g.count++;
       if (pair.status === 'ready') g.ready++;
+      if (pair.outside) g.outside++;
       keyOf.set(pair, key);
     }
     const sorted = [...groups.values()].sort((a, b) => b.count - a.count || taxonLabel(a.info).localeCompare(taxonLabel(b.info)));
     const kept = sorted.slice(0, sorted.length > top + 1 ? top : top + 1);
     const rest = sorted.slice(kept.length);
     if (rest.length) {
-      const other = { key: 'other', info: null, group: 'other', count: 0, ready: 0, otherCount: rest.length };
-      for (const g of rest) { other.count += g.count; other.ready += g.ready; }
+      const other = { key: 'other', info: null, group: 'other', count: 0, ready: 0, outside: 0, otherCount: rest.length };
+      for (const g of rest) { other.count += g.count; other.ready += g.ready; other.outside += g.outside; }
       kept.push(other);
     }
     const keptKeys = new Set(kept.map(g => g.key));
@@ -1702,9 +1902,10 @@ function buildFlows(pairs, foodRank, eaterRank, top) {
   const flows = new Map();
   for (const pair of pairs) {
     const id = `${food.keyFor(pair)}>${eater.keyFor(pair)}`;
-    if (!flows.has(id)) flows.set(id, { id, food: food.keyFor(pair), eater: eater.keyFor(pair), count: 0, ready: 0 });
+    if (!flows.has(id)) flows.set(id, { id, food: food.keyFor(pair), eater: eater.keyFor(pair), count: 0, ready: 0, outside: 0 });
     flows.get(id).count++;
     if (pair.status === 'ready') flows.get(id).ready++;
+    if (pair.outside) flows.get(id).outside++;
   }
   // Food groups in group order, largest first; "Other" last.
   const groupIndex = Object.keys(GROUPS);
@@ -1714,12 +1915,14 @@ function buildFlows(pairs, foodRank, eaterRank, top) {
 
 const flowName = g => (g.key === 'other' ? `Other (${plural(g.otherCount, 'taxon', 'taxa')})` : taxonLabel(g.info));
 
+const fromOthersText = n => (n ? ` · ${formatNumber(n)} from other records` : '');
+
 function flowTooltip(flow, foodNode, eaterNode) {
-  return `<strong>${plural(flow.count, 'pair')}</strong> <span class="muted">${formatNumber(flow.ready)} ready</span><br>
+  return `<strong>${plural(flow.count, 'pair')}</strong> <span class="muted">${formatNumber(flow.ready)} ready${fromOthersText(flow.outside)}</span><br>
     ${escapeHtml(flowName(foodNode))} → ${escapeHtml(flowName(eaterNode))}`;
 }
 function flowNodeTooltip(g, sideLabel) {
-  return `<strong>${plural(g.count, 'pair')}</strong> <span class="muted">${formatNumber(g.ready)} ready</span><br>
+  return `<strong>${plural(g.count, 'pair')}</strong> <span class="muted">${formatNumber(g.ready)} ready${fromOthersText(g.outside)}</span><br>
     ${g.key === 'other' ? escapeHtml(flowName(g)) : primaryNameHtml(g.info)}${secondaryNameHtml(g.info) ? ` <span class="muted">${secondaryNameHtml(g.info)}</span>` : ''}<br>
     <span class="muted">${sideLabel}</span>`;
 }
@@ -2032,7 +2235,7 @@ function renderPairsTable() {
       <td data-value="${escapeHtml(taxonLabel(infoOf(p.eater.taxon)))}">${obsCellHtml(p.eater)}</td>
       <td>${escapeHtml(FEEDING[p.feeding])}</td>
       <td class="nowrap" data-value="${escapeHtml(p.observedOn ?? '')}">${escapeHtml(p.observedOn ?? 'Unknown')}</td>
-      <td>${personHtml(p)}</td>
+      <td>${personHtml(p)}${p.outside ? '<span class="alt-name">From other records</span>' : ''}</td>
       <td data-value="${STATUS_ORDER.indexOf(p.status)}">${statusLabelHtml(p.status)}${p.issues.length ? `<ul class="issues">${p.issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}</ul>` : ''}</td>
     </tr>`).join('');
   table.classList.toggle('show-all', pairsShowingAll);
@@ -2130,6 +2333,7 @@ const obsColumns = (prefix, obsOf) => [
 const PAIR_CSV_COLUMNS = [
   ['status', p => STATUS[p.status].label],
   ['issues', p => p.issues.join('; ')],
+  ['source', p => (p.outside ? 'other records' : 'search')],
   ['feeding_type', p => FEEDING[p.feeding]],
   ['feeding_field_value', p => p.feedingValue],
   ...obsColumns('food', p => p.food),
@@ -2151,6 +2355,7 @@ const EDGE_CSV_COLUMNS = [
   ['feeding_types', l => [...new Set(l.pairs.map(p => FEEDING[p.feeding]))].join('; ')],
   ['pairs', l => l.pairs.length],
   ['pairs_ready_for_who_eats_whom', l => l.pairs.filter(p => p.status === 'ready').length],
+  ['pairs_from_other_records', l => l.pairs.filter(p => p.outside).length],
   ['observation_ids', l => pairObsIds(l.pairs).join(' ')],
 ];
 
@@ -2185,11 +2390,11 @@ async function run(params) {
   }
   taxonomy = await loadTaxonomy([...byId.values()]);
   const { pairs, problems } = buildPairs(seeds, byId, byUuid);
-  Object.assign(state, { seeds, pairs, problems });
+  Object.assign(state, { seeds, pairs, problems, byId, byUuid });
 
   renderSummary(extra.length);
   renderReadiness();
-  renderFilters();
+  setupFilters();
   setupNamesSwitch();
   setupFlows();
   setupPairsTable();
@@ -2200,6 +2405,15 @@ async function run(params) {
   document.getElementById('dashboard').hidden = false;
   // The food web measures its container, so it's drawn once the dashboard is visible.
   applyFilters();
+  // A link that asked for other records loads them now.
+  if (state.more) {
+    await ensureOutside();
+    if (outside.status === 'error') {
+      state.more = '';
+      setViewParam('more', '');
+    }
+    applyFilters();
+  }
 }
 
 const params = new URLSearchParams(location.search);
